@@ -1,0 +1,235 @@
+#!/usr/bin/env node
+/**
+ * xinchuan-knowledge auto-deploy (GitHub webhook-triggered).
+ *
+ * Entry points:
+ *   node scripts/auto-deploy.js '<meta-json>'    build phase
+ *   node scripts/auto-deploy.js --finish '<meta-json>'
+ *                                             finish phase (post-restart)
+ *
+ * Two-phase design: the build phase ends by restarting THIS app via pm2,
+ * and on Windows pm2 can kill the deploy process tree during that restart.
+ * So the build phase spawns a DETACHED finisher before calling pm2 restart;
+ * the finisher survives the restart, verifies localhost:3001 is healthy,
+ * writes the final status and removes the lock.
+ *
+ * Artifacts:
+ *   logs/auto-deploy.log         append-only run log (truncated at 5 MB)
+ *   data/deploy-status.json      machine-readable last-deploy status
+ *   data/deploy.lock             single-flight guard (stale after 15 min)
+ */
+
+"use strict";
+
+const { spawnSync, spawn } = require("child_process");
+const fs = require("fs");
+const http = require("http");
+const path = require("path");
+
+const REPO = path.resolve(__dirname, "..");
+const LOG_DIR = path.join(REPO, "logs");
+const DATA_DIR = path.join(REPO, "data");
+const LOG_FILE = path.join(LOG_DIR, "auto-deploy.log");
+const STATUS_FILE = path.join(DATA_DIR, "deploy-status.json");
+const LOCK_FILE = path.join(DATA_DIR, "deploy.lock");
+const HEALTH_URL = "http://localhost:3001";
+const HEALTH_TIMEOUT_MS = 120 * 1000;
+const STALE_LOCK_MS = 15 * 60 * 1000;
+
+fs.mkdirSync(LOG_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// ------------------------------------------------------------------ logging
+function truncateLogIfNeeded() {
+  try {
+    const st = fs.statSync(LOG_FILE);
+    if (st.size > 5 * 1024 * 1024) {
+      const buf = fs.readFileSync(LOG_FILE);
+      fs.writeFileSync(LOG_FILE, buf.subarray(buf.length - 1024 * 1024));
+    }
+  } catch (_e) { /* first run */ }
+}
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  process.stdout.write(line);
+  try { fs.appendFileSync(LOG_FILE, line); } catch (_e) {}
+}
+
+// ------------------------------------------------------------------ env/PATH
+function buildEnv() {
+  const extra = [
+    path.dirname(process.execPath),
+    "C:\\Program Files\\nodejs",
+    "C:\\Program Files\\Git\\cmd",
+    "C:\\Program Files\\Git\\bin",
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || "",
+      "AppData\\Local\\hermes\\git\\usr\\bin"
+    ),
+  ];
+  const pathSep = process.platform === "win32" ? ";" : ":";
+  return {
+    ...process.env,
+    PATH: extra.join(pathSep) + pathSep + (process.env.PATH || ""),
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_EDITOR: "true",
+  };
+}
+
+// ------------------------------------------------------------------ helpers
+function sh(label, cmd, opts = {}) {
+  log(`[run] ${label}: ${cmd}`);
+  const result = spawnSync(cmd, {
+    shell: true,
+    cwd: REPO,
+    env: buildEnv(),
+    timeout: opts.timeout || 300_000,
+    stdio: "pipe",
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.stdout) log(`[out] ${result.stdout.trim().split("\n").join("\n[out] ")}`);
+  if (result.stderr) log(`[err] ${result.stderr.trim().split("\n").join("\n[err] ")}`);
+  if (result.status !== 0) {
+    throw new Error(`${label} failed (exit ${result.status}): ${result.stderr || result.stdout}`);
+  }
+  return result;
+}
+
+function writeStatus(status, meta) {
+  const data = {
+    ...meta,
+    status,
+    timestamp: new Date().toISOString(),
+  };
+  fs.writeFileSync(STATUS_FILE, JSON.stringify(data, null, 2));
+  log(`[status] ${status}`);
+}
+
+function acquireLock() {
+  if (fs.existsSync(LOCK_FILE)) {
+    try {
+      const age = Date.now() - fs.statSync(LOCK_FILE).mtimeMs;
+      if (age < STALE_LOCK_MS) {
+        log("[skip] another deploy is already running (lock not stale)");
+        return false;
+      }
+      log("[warn] removing stale lock (older than 15 min)");
+    } catch (_e) {}
+  }
+  fs.writeFileSync(LOCK_FILE, String(process.pid));
+  return true;
+}
+
+function releaseLock() {
+  try { fs.unlinkSync(LOCK_FILE); } catch (_e) {}
+}
+
+function healthCheck() {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - start;
+      if (elapsed > HEALTH_TIMEOUT_MS) {
+        clearInterval(interval);
+        resolve(false);
+        return;
+      }
+      const req = http.get(HEALTH_URL, { timeout: 10_000 }, (res) => {
+        if (res.statusCode === 200 || res.statusCode === 307) {
+          clearInterval(interval);
+          log(`[health] OK (HTTP ${res.statusCode} after ${elapsed}ms)`);
+          resolve(true);
+        }
+        res.resume();
+      });
+      req.on("error", () => { /* not ready yet */ });
+      req.on("timeout", () => { req.destroy(); });
+    }, 3000);
+  });
+}
+
+// ================================================================ FINISH PHASE
+// Runs as a detached child. Survives the pm2 restart that kills its parent.
+if (process.argv[2] === "--finish") {
+  let meta = {};
+  try { meta = JSON.parse(process.argv[3] || "{}"); } catch (_e) {}
+
+  (async () => {
+    log("[finish] waiting for server to come back up...");
+    const healthy = await healthCheck();
+    if (!healthy) {
+      log("[finish] HEALTH CHECK FAILED — attempting rollback");
+      try {
+        // Rollback: checkout previous commit, rebuild, restart
+        sh("rollback: git checkout", `git -C "${REPO}" checkout HEAD~1`);
+        sh("rollback: npm install", `npm install --prefer-offline`, { timeout: 120_000 });
+        sh("rollback: npm build", `npm run build`, { timeout: 300_000 });
+        sh("rollback: pm2 restart", `pm2 restart xinchuan`);
+        const rollbackOk = await healthCheck();
+        writeStatus(rollbackOk ? "rollback-ok" : "rollback-failed", meta);
+      } catch (e) {
+        log(`[finish] rollback error: ${e.message}`);
+        writeStatus("rollback-error", { ...meta, error: e.message });
+      }
+    } else {
+      writeStatus("ok", meta);
+    }
+    releaseLock();
+    log("[finish] done");
+    process.exit(0);
+  })();
+  return;
+}
+
+// ================================================================ BUILD PHASE
+const meta = (() => { try { return JSON.parse(process.argv[2] || "{}"); } catch (_e) { return {}; } })();
+
+truncateLogIfNeeded();
+log("=== auto-deploy started ===");
+log(`meta: ${JSON.stringify(meta)}`);
+
+if (!acquireLock()) {
+  process.exit(0);
+}
+
+try {
+  // 1. Git pull
+  const preCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
+  sh("git pull", "git pull --ff-only origin main", { timeout: 120_000 });
+  const postCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
+
+  if (preCommit === postCommit) {
+    log("[skip] no new commits — skipping build");
+    writeStatus("noop", { ...meta, commit: preCommit });
+    releaseLock();
+    process.exit(0);
+  }
+
+  log(`[deploy] ${preCommit.slice(0, 8)} -> ${postCommit.slice(0, 8)}`);
+
+  // 2. npm install (always — safer than diffing package.json)
+  sh("npm install", "npm install --prefer-offline", { timeout: 120_000 });
+
+  // 3. npm build
+  sh("npm build", "npm run build", { timeout: 300_000 });
+
+  // 4. Spawn finisher (detached — survives the pm2 restart below)
+  const finisher = spawn(process.execPath, [__filename, "--finish", JSON.stringify({ ...meta, commit: postCommit })], {
+    cwd: REPO,
+    detached: true,
+    stdio: "ignore",
+    env: buildEnv(),
+    windowsHide: true,
+  });
+  finisher.unref();
+  log(`[deploy] spawned finisher (pid ${finisher.pid})`);
+
+  // 5. pm2 restart (kills this process tree — finisher survives)
+  sh("pm2 restart", "pm2 restart xinchuan");
+} catch (e) {
+  log(`[deploy] ERROR: ${e.message}`);
+  writeStatus("failed", { ...meta, error: e.message });
+  releaseLock();
+  process.exit(1);
+}
