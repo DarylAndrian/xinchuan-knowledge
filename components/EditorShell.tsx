@@ -6,9 +6,9 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
-  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink,
+  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X,
 } from "lucide-react";
-import Icon from "./Icon";
+import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
 import type { CollectionRow, PageRow } from "@/lib/db";
 
@@ -16,18 +16,26 @@ interface Props {
   collections: CollectionRow[];
   pages: PageRow[];
   userId: number;
+  isSuperadmin?: boolean;
 }
 
 type SaveState = "saved" | "dirty" | "saving";
 
-export default function EditorShell({ collections: initialCollections, pages: initialPages, userId }: Props) {
+export default function EditorShell({ collections: initialCollections, pages: initialPages, userId, isSuperadmin = false }: Props) {
   const [collections, setCollections] = useState(initialCollections);
   const [pages, setPages] = useState(initialPages);
   const [selectedId, setSelectedId] = useState<number | null>(initialPages[0]?.id ?? null);
   const [title, setTitle] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [newCollectionDescription, setNewCollectionDescription] = useState("");
+  const [newCollectionIcon, setNewCollectionIcon] = useState("book");
   const [showNewCollection, setShowNewCollection] = useState(false);
+  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editIcon, setEditIcon] = useState("");
+  const [collectionError, setCollectionError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextUpdate = useRef(false);
 
@@ -104,17 +112,76 @@ export default function EditorShell({ collections: initialCollections, pages: in
   async function createCollection() {
     const name = newCollectionName.trim();
     if (!name) return;
+    setCollectionError(null);
     const res = await fetch("/api/collections", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, description: newCollectionDescription.trim(), icon: newCollectionIcon }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setCollectionError(data.error || "Could not create collection.");
+      return;
+    }
     const collection = (await res.json()) as CollectionRow;
     setCollections((cs) => [...cs, collection]);
     setNewCollectionName("");
+    setNewCollectionDescription("");
+    setNewCollectionIcon("book");
     setShowNewCollection(false);
     await createPage(collection.id, null);
+  }
+
+  function startEditingCollection(c: CollectionRow) {
+    setEditingCollectionId(c.id);
+    setEditName(c.name);
+    setEditDescription(c.description || "");
+    setEditIcon(c.icon || "book");
+    setCollectionError(null);
+  }
+
+  async function saveCollectionEdit(id: number) {
+    const name = editName.trim();
+    if (!name) {
+      setCollectionError("Name is required.");
+      return;
+    }
+    setCollectionError(null);
+    const res = await fetch(`/api/collections/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description: editDescription, icon: editIcon }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setCollectionError(data.error || "Could not save collection.");
+      return;
+    }
+    setCollections((cs) => cs.map((c) => (c.id === id ? { ...c, ...data } : c)));
+    setEditingCollectionId(null);
+  }
+
+  async function deleteCollection(c: CollectionRow) {
+    const pageCount = pages.filter((p) => p.collection_id === c.id).length;
+    if (
+      !confirm(
+        `Delete collection “${c.name}”${pageCount ? ` and its ${pageCount} page(s)` : ""}? This cannot be undone.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/collections/${c.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setCollectionError(data.error || "Could not delete collection.");
+      return;
+    }
+    setCollections((cs) => cs.filter((x) => x.id !== c.id));
+    setPages((ps) => ps.filter((p) => p.collection_id !== c.id));
+    if (selected && selected.collection_id === c.id) {
+      const remaining = pages.filter((p) => p.collection_id !== c.id);
+      setSelectedId(remaining[0]?.id ?? null);
+    }
+    if (editingCollectionId === c.id) setEditingCollectionId(null);
   }
 
   async function togglePublish() {
@@ -224,18 +291,84 @@ export default function EditorShell({ collections: initialCollections, pages: in
       <div className="admin-layout">
         {/* left: tree navigator */}
         <aside className="wiki-sidebar" style={{ position: "static", maxHeight: "none" }}>
+          {collectionError && (
+            <div className="mb-2 border-l-2 px-2 py-1 text-[12px]" style={{ borderColor: "var(--brick)", color: "var(--brick)" }}>
+              {collectionError}
+            </div>
+          )}
           {collections.map((c) => (
             <div key={c.id} style={{ marginBottom: 16 }}>
-              <div className="sb-label">
-                <Icon name={c.icon} size={12} /> {c.name}
-                <button
-                  onClick={() => createPage(c.id, null)}
-                  style={{ marginLeft: "auto", background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
-                  title="New page in this collection"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
+              {editingCollectionId === c.id ? (
+                <div className="rounded border border-rule-strong bg-canvas p-2" style={{ margin: "0 2px" }}>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveCollectionEdit(c.id);
+                      if (e.key === "Escape") setEditingCollectionId(null);
+                    }}
+                    placeholder="Collection name…"
+                    className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+                  />
+                  <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
+                  <input
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveCollectionEdit(c.id);
+                      if (e.key === "Escape") setEditingCollectionId(null);
+                    }}
+                    placeholder="Short description…"
+                    className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+                  />
+                  <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                    Icon <span className="font-normal normal-case">(Lucide)</span>
+                  </label>
+                  <IconPicker value={editIcon} onChange={setEditIcon} />
+                  <div className="mt-2 flex gap-1.5">
+                    <button className="btn btn-primary btn-sm" onClick={() => saveCollectionEdit(c.id)}>Save</button>
+                    <button className="btn btn-sm" onClick={() => setEditingCollectionId(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="sb-label">
+                    <Icon name={c.icon} size={12} /> {c.name}
+                    <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+                      {isSuperadmin && (
+                        <>
+                          <button
+                            onClick={() => startEditingCollection(c)}
+                            style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
+                            title="Edit collection (name, description, icon)"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            onClick={() => deleteCollection(c)}
+                            style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
+                            title="Delete collection"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => createPage(c.id, null)}
+                        style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
+                        title="New page in this collection"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </span>
+                  </div>
+                  {c.description && (
+                    <div className="px-[10px] pb-1 text-[11.5px] leading-snug text-ink-muted">{c.description}</div>
+                  )}
+                </>
+              )}
               <nav className="tree">
                 {(treeByCollection.get(c.id) || []).map(({ page, depth }) => (
                   <button
@@ -257,6 +390,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
 
           {showNewCollection ? (
             <div style={{ padding: "0 10px" }}>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
               <input
                 autoFocus
                 value={newCollectionName}
@@ -265,9 +399,21 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 placeholder="Collection name…"
                 className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
               />
+              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
+              <input
+                value={newCollectionDescription}
+                onChange={(e) => setNewCollectionDescription(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && createCollection()}
+                placeholder="Short description…"
+                className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+              />
+              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                Icon <span className="font-normal normal-case">(Lucide)</span>
+              </label>
+              <IconPicker value={newCollectionIcon} onChange={setNewCollectionIcon} />
               <div className="mt-1.5 flex gap-1.5">
                 <button className="btn btn-primary btn-sm" onClick={createCollection}>Create</button>
-                <button className="btn btn-sm" onClick={() => setShowNewCollection(false)}>Cancel</button>
+                <button className="btn btn-sm" onClick={() => { setShowNewCollection(false); setCollectionError(null); }}>Cancel</button>
               </div>
             </div>
           ) : (

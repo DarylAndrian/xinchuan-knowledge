@@ -17,5 +17,5 @@ export default async function EditorPage() {
     db.prepare("SELECT * FROM pages ORDER BY collection_id, position, title").all() as unknown as PageRow[]
   ).map((p) => ({ ...p }));
 
-  return <EditorShell collections={collections} pages={pages} userId={user.id} />;
+  return <EditorShell collections={collections} pages={pages} userId={user.id} isSuperadmin={user.role === "superadmin"} />;
 }
