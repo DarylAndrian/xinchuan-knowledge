@@ -57,6 +57,13 @@ function log(msg) {
 
 // ------------------------------------------------------------------ env/PATH
 function buildEnv() {
+  // NOTE: the webhook handler inherits NODE_ENV=production from the Next
+  // server, and `npm install` with NODE_ENV=production silently SKIPS
+  // devDependencies (tailwindcss, postcss, ...) — which then fails the
+  // production build with "Cannot find module 'tailwindcss'".
+  // Forcing "development" here only affects dependency installation:
+  // `next build` sets NODE_ENV=production internally, so the built output
+  // is unchanged.
   const extra = [
     path.dirname(process.execPath),
     "C:\\Program Files\\nodejs",
@@ -70,6 +77,7 @@ function buildEnv() {
   const pathSep = process.platform === "win32" ? ";" : ":";
   return {
     ...process.env,
+    NODE_ENV: "development",
     PATH: extra.join(pathSep) + pathSep + (process.env.PATH || ""),
     GIT_TERMINAL_PROMPT: "0",
     GIT_EDITOR: "true",
@@ -163,7 +171,7 @@ if (process.argv[2] === "--finish") {
       try {
         // Rollback: checkout previous commit, rebuild, restart
         sh("rollback: git checkout", `git -C "${REPO}" checkout HEAD~1`);
-        sh("rollback: npm install", `npm install --prefer-offline`, { timeout: 120_000 });
+        sh("rollback: npm install", `npm install --prefer-offline --include=dev`, { timeout: 120_000 });
         sh("rollback: npm build", `npm run build`, { timeout: 300_000 });
         sh("rollback: pm2 restart", `pm2 restart xinchuan`);
         const rollbackOk = await healthCheck();
@@ -214,8 +222,10 @@ try {
   log(`[deploy] ${preCommit.slice(0, 8)} -> ${postCommit.slice(0, 8)}`);
 
   // 2. npm install (always — repairs any drift in node_modules; a dirty
-  //    lockfile afterwards is harmless since step 1 wipes local changes)
-  sh("npm install", "npm install --prefer-offline", { timeout: 120_000 });
+  //    lockfile afterwards is harmless since step 1 wipes local changes).
+  //    --include=dev is belt-and-suspenders with the NODE_ENV scrub above:
+  //    devDependencies (tailwindcss, ...) must be present to build.
+  sh("npm install", "npm install --prefer-offline --include=dev", { timeout: 120_000 });
 
   // 3. Fresh build — wipe the .next cache first. Stale webpack cache can
   //    produce phantom "Module not found" errors for files that exist.

@@ -14,6 +14,10 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-deploy installs devDependencies (NODE_ENV scrub + --include=dev) so production builds no longer fail on missing tailwindcss
+
 ## [1.1.1] - 2026-09-05
 
 ### Changed
