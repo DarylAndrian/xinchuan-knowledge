@@ -36,6 +36,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [editDescription, setEditDescription] = useState("");
   const [editIcon, setEditIcon] = useState("");
   const [collectionError, setCollectionError] = useState<string | null>(null);
+  const [slugInput, setSlugInput] = useState("");
+  const [slugError, setSlugError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextUpdate = useRef(false);
 
@@ -52,6 +54,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
   useEffect(() => {
     if (!selected || !editor) return;
     setTitle(selected.title);
+    setSlugInput(selected.slug);
+    setSlugError(null);
     skipNextUpdate.current = true;
     try {
       const json = JSON.parse(selected.content_json || "{}");
@@ -217,6 +221,29 @@ export default function EditorShell({ collections: initialCollections, pages: in
       const updated = (await res.json()) as PageRow;
       setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     }
+  }
+
+  async function saveSlug() {
+    if (!selected) return;
+    const slug = slugInput.trim();
+    if (!slug) {
+      setSlugError("Slug can't be empty.");
+      return;
+    }
+    setSlugError(null);
+    const res = await fetch(`/api/pages/${selected.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSlugError(data.error || "Could not save slug.");
+      return;
+    }
+    const updated = data as PageRow;
+    setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+    setSlugInput(updated.slug);
   }
 
   /* ----- derived tree ----- */
@@ -503,6 +530,27 @@ export default function EditorShell({ collections: initialCollections, pages: in
                     <option key={p.id} value={p.id}>{p.title}</option>
                   ))}
                 </select>
+              </div>
+              <div className="field">
+                <label>URL slug</label>
+                <div className="flex gap-1.5">
+                  <input
+                    value={slugInput}
+                    onChange={(e) => setSlugInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveSlug()}
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    placeholder="page-url-slug"
+                    className="min-w-0 flex-1"
+                  />
+                  <button className="btn btn-sm shrink-0" onClick={saveSlug}>Save</button>
+                </div>
+                {slugError && (
+                  <p className="mt-1 text-[12px]" style={{ color: "var(--brick)" }}>{slugError}</p>
+                )}
+                <p className="mt-1 text-[11.5px] leading-snug text-ink-muted">
+                  Used in the page URL. Editing the title only updates it while it still matches the title.
+                </p>
               </div>
 
               <h4>Visibility</h4>

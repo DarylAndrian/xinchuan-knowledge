@@ -16,8 +16,19 @@ npm run changelog:release -- patch
 
 ### Added
 
+- Editable page URL slugs in the Editor inspector (Page settings), with collision detection
+
+### Fixed
+
+- Page slug auto-regeneration is now deduplicated and no longer overwrites customized slugs on title autosave
+
+## [1.0.1] - 2026-09-04
+
+### Added
+
 - Superadmin collection management: rename, description, Lucide icon picker, and delete (Editor sidebar + Admin panel), with PATCH/DELETE /api/collections/[id]
 - App version badge (v1.0.1) in the top bar, sourced from package.json
+
 ### Changed
 
 - Expanded Lucide icon set (49 icons) with shared IconPicker used for collections

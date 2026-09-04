@@ -6,10 +6,11 @@ A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. P
 
 - **Public reader (Catalogue)** — published pages are readable anonymously (toggleable in settings). Collection sidebar tree, breadcrumbs, generated table of contents, 68ch reading column.
 - **Anchored comments** — select any text on a page to attach a comment thread to that exact passage. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any.
-- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, callouts, code blocks, tables, dividers. Debounced autosave, draft/publish switch, page reparenting, page deletion, create pages and collections.
+- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, callouts, code blocks, tables, dividers. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, create pages and collections.
 - **Roles** — `superadmin` > `admin` > `commentator`. Editors manage content; commentators comment; anonymous visitors read published pages.
-- **Superadmin panel** — reached from the profile menu (avatar, top right): user management (create, change role, suspend, delete with last-superadmin protection) and site settings (site name, public viewing, open registration, comment approval).
+- **Superadmin panel** — reached from the profile menu (avatar, top right): user management (create, change role, suspend, delete with last-superadmin protection), collection management (rename, description, [Lucide](https://lucide.dev/icons) icon picker, delete), and site settings (site name, public viewing, open registration, comment approval). Collections can also be edited inline from the Editor sidebar.
 - **Search** — keyword search over published page titles and content with context snippets.
+- **Version badge** — the current app version (from `package.json`) is shown small at the top right of the nav bar.
 
 ## Tech stack
 
@@ -65,15 +66,15 @@ app/
   search/                   Search results
   catalogue/                Reader index + [...path] page renderer
   editor/                   Admin editor workspace
-  admin/                    Superadmin panel (users + settings)
-  api/                      auth, pages, collections, comments, users, settings
+  admin/                    Superadmin panel (users + collections + settings)
+  api/                      auth, pages, collections (incl. [id] PATCH/DELETE), comments, users, settings
 components/
-  TopBar.tsx                Nav (Home / Catalogue / Editor) + profile menu
+  TopBar.tsx                Nav (Home / Catalogue / Editor) + profile menu + version badge
   CatalogueSidebar.tsx      Collection tree for the reader
   PageReader.tsx            Article + TOC + anchored comment threads
-  EditorShell.tsx           TipTap editor, tree, inspector, autosave
-  AdminPanel.tsx            Users/roles table + site settings
-  Icon.tsx                  Lucide icon lookup by name
+  EditorShell.tsx           TipTap editor, tree, inspector, autosave, collection editing
+  AdminPanel.tsx            Users/roles table + collections + site settings
+  Icon.tsx                  Lucide icon lookup by name + IconPicker grid
 lib/
   db.ts                     node:sqlite singleton, schema, settings helpers
   seed.ts                   First-run seed (transactional)

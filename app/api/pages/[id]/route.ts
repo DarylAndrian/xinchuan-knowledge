@@ -9,7 +9,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { id } = await ctx.params;
   const pageId = Number(id);
   const existing = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId) as
-    | { id: number; title: string; slug: string }
+    | { id: number; collection_id: number; parent_id: number | null; title: string; slug: string }
     | undefined;
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -17,13 +17,41 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const sets: string[] = [];
   const values: (string | number | null)[] = [];
 
+  const slugTaken = (slug: string) =>
+    db
+      .prepare(
+        "SELECT id FROM pages WHERE collection_id = ? AND COALESCE(parent_id,0) = COALESCE(?,0) AND slug = ? AND id != ?"
+      )
+      .get(existing.collection_id, existing.parent_id, slug);
+
+  // Explicit slug edit: normalize, reject empties and collisions.
+  const slugProvided = typeof body.slug === "string";
+  if (slugProvided) {
+    const slug = slugify(body.slug.trim());
+    if (!slug) return NextResponse.json({ error: "Slug can't be empty." }, { status: 400 });
+    if (slugTaken(slug))
+      return NextResponse.json(
+        { error: "That slug is already used by another page here." },
+        { status: 409 }
+      );
+    sets.push("slug = ?");
+    values.push(slug);
+  }
+
   if (typeof body.title === "string") {
     const title = body.title.trim() || "Untitled";
     sets.push("title = ?");
     values.push(title);
-    if (title !== existing.title) {
+    // Regenerate the slug from the title only when no explicit slug was sent
+    // and the current slug still looks auto-generated (so typing never clobbers
+    // a slug the user customized, and never produces duplicates).
+    if (!slugProvided && title !== existing.title && existing.slug === slugify(existing.title)) {
+      const base = slugify(title);
+      let slug = base;
+      let n = 2;
+      while (slugTaken(slug)) slug = `${base}-${n++}`;
       sets.push("slug = ?");
-      values.push(slugify(title));
+      values.push(slug);
     }
   }
   for (const key of ["icon", "content_json", "content_html"] as const) {
