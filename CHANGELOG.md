@@ -14,6 +14,10 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+### Fixed
+
+- Harden auto-deploy: fetch+reset --hard (lock-file drift no longer jams deploys), fresh .next cache each build, null-guard usePathname type error
+
 ## [1.1.0] - 2026-09-05
 
 ### Added
