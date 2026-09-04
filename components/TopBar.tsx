@@ -9,9 +9,11 @@ import type { SessionUser } from "@/lib/auth";
 export default function TopBar({
   user,
   siteName,
+  version,
 }: {
   user: SessionUser | null;
   siteName: string;
+  version: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -121,6 +123,9 @@ export default function TopBar({
             Sign in
           </Link>
         )}
+        <span className="shrink-0 text-[11px] tabular-nums text-ink-muted" title={`Xinchuan Knowledge Center v${version}`}>
+          v{version}
+        </span>
       </div>
     </header>
   );

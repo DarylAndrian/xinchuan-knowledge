@@ -17,7 +17,7 @@ npm run changelog:release -- patch
 ### Added
 
 - Superadmin collection management: rename, description, Lucide icon picker, and delete (Editor sidebar + Admin panel), with PATCH/DELETE /api/collections/[id]
-
+- App version badge (v1.0.1) in the top bar, sourced from package.json
 ### Changed
 
 - Expanded Lucide icon set (49 icons) with shared IconPicker used for collections

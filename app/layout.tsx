@@ -4,6 +4,7 @@ import "./globals.css";
 import { getSessionUser } from "@/lib/auth";
 import { getSetting } from "@/lib/db";
 import TopBar from "@/components/TopBar";
+import pkg from "@/package.json";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -21,7 +22,7 @@ export default async function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans">
-        <TopBar user={user} siteName={siteName} />
+        <TopBar user={user} siteName={siteName} version={pkg.version} />
         {children}
       </body>
     </html>
