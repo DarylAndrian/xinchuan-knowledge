@@ -36,7 +36,24 @@ function deployRunning(): boolean {
   }
 }
 
+/**
+ * In-memory burst guard ONLY (the lock file is the real single-flight guard).
+ * CRITICAL: this flag must self-reset. A deploy can end without restarting
+ * this process (the "noop" path: no new commits -> no pm2 restart), so a flag
+ * that only clears on process death stays stuck forever and blocks every
+ * future deploy. Reset after 60s — long enough to swallow GitHub delivery
+ * retries/bursts, short enough to never strand the pipeline.
+ */
 let deployInFlight = false;
+let deployInFlightTimer: ReturnType<typeof setTimeout> | null = null;
+function setDeployInFlight() {
+  deployInFlight = true;
+  if (deployInFlightTimer) clearTimeout(deployInFlightTimer);
+  deployInFlightTimer = setTimeout(() => {
+    deployInFlight = false;
+    deployInFlightTimer = null;
+  }, 60_000);
+}
 
 export async function POST(request: NextRequest) {
   // 0. Secret check — refuse if not configured
@@ -91,7 +108,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 5. Spawn detached deploy script
+  // 5. Spawn detached deploy script (self-resetting burst guard)
   const head = (body.after || "").slice(0, 8);
   const pusher = body?.pusher?.name || body?.pusher?.email || "unknown";
   const meta = JSON.stringify({
@@ -102,7 +119,7 @@ export async function POST(request: NextRequest) {
     deliveryId: request.headers.get("x-github-delivery") || null,
   });
 
-  deployInFlight = true;
+  setDeployInFlight();
   const child = spawn(process.execPath, [deployScript, meta], {
     cwd: repoRoot,
     detached: true,
