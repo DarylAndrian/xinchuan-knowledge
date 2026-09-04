@@ -6,10 +6,11 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
-  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X,
+  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
+import { resolveImageUrl, isSharePageUrl } from "@/lib/images";
 import type { CollectionRow, PageRow } from "@/lib/db";
 
 interface Props {
@@ -223,8 +224,40 @@ export default function EditorShell({ collections: initialCollections, pages: in
     }
   }
 
-  async function saveSlug() {
-    if (!selected) return;
+  function toggleLink() {
+    if (!editor) return;
+    if (editor.isActive("link")) {
+      editor.chain().focus().unsetLink().run();
+      return;
+    }
+    const prev = (editor.getAttributes("link").href as string) || "";
+    const href = window.prompt("Link URL…", prev);
+    if (href === null) return;
+    if (!href.trim()) {
+      editor.chain().focus().unsetLink().run();
+      return;
+    }
+    editor.chain().focus().setLink({ href: href.trim() }).run();
+  }
+
+  function insertImage() {
+    if (!editor) return;
+    const src = window.prompt(
+      "Image URL… (direct picture link — Google Drive / Dropbox links are converted automatically)"
+    );
+    if (src === null || !src.trim()) return;
+    const clean = src.trim();
+    if (
+      isSharePageUrl(clean) &&
+      !confirm(
+        "This looks like a share page, not a direct picture, so it may not display. Insert anyway? (Tip: attach share pages as a hyperlink instead.)"
+      )
+    )
+      return;
+    editor.chain().focus().setImage({ src: resolveImageUrl(clean) }).run();
+  }
+
+  async function saveSlug() {    if (!selected) return;
     const slug = slugInput.trim();
     if (!slug) {
       setSlugError("Slug can't be empty.");
@@ -492,6 +525,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
                   "Insert table"
                 )}
                 {toolbarBtn(() => editor.chain().focus().setHorizontalRule().run(), false, <Minus size={14} />, "Divider")}
+                <span className="sep" />
+                {toolbarBtn(toggleLink, editor.isActive("link"), <Link2 size={14} />, "Link")}
+                {toolbarBtn(insertImage, false, <ImagePlus size={14} />, "Image")}
               </div>
 
               <EditorContent editor={editor} className="tiptap-wrap" />

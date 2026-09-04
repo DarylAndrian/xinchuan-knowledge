@@ -6,7 +6,7 @@ A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. P
 
 - **Public reader (Catalogue)** — published pages are readable anonymously (toggleable in settings). Collection sidebar tree, breadcrumbs, generated table of contents, 68ch reading column.
 - **Anchored comments** — select any text on a page to attach a comment thread to that exact passage. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any.
-- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, callouts, code blocks, tables, dividers. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, create pages and collections.
+- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, create pages and collections.
 - **Roles** — `superadmin` > `admin` > `commentator`. Editors manage content; commentators comment; anonymous visitors read published pages.
 - **Superadmin panel** — reached from the profile menu (avatar, top right): user management (create, change role, suspend, delete with last-superadmin protection), collection management (rename, description, [Lucide](https://lucide.dev/icons) icon picker, delete), and site settings (site name, public viewing, open registration, comment approval). Collections can also be edited inline from the Editor sidebar.
 - **Search** — keyword search over published page titles and content with context snippets.
@@ -19,7 +19,7 @@ A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. P
 | Framework | Next.js 15 (App Router) + TypeScript |
 | Styling | Tailwind CSS + custom flat design system (CSS variables) |
 | Icons | [Lucide](https://lucide.dev/) via `lucide-react` |
-| Editor | [TipTap](https://tiptap.dev/) (StarterKit, tables, task lists) |
+| Editor | [TipTap](https://tiptap.dev/) (StarterKit, links, images, tables, task lists) |
 | Database | SQLite via Node's built-in `node:sqlite` (no native deps), stored at `data/xinchuan.db` |
 | Auth | Hand-rolled cookie sessions + `bcryptjs` |
 
@@ -81,6 +81,7 @@ lib/
   auth.ts                   Session cookie helpers + role guards
   pages.ts / comments.ts    Query helpers
   extensions.ts             Shared TipTap extension set
+  images.ts                 Share-link → direct image URL resolver
 scripts/
   changelog.js              Changelog/release management (see below)
 ```

@@ -98,6 +98,9 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .wiki-content code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .9em; background: var(--surface); border-radius: 3px; padding: 1px 5px; }
 .wiki-content pre code { background: none; padding: 0; }
 .wiki-content hr { border: 0; border-top: 1px solid var(--rule); margin: 28px 0; }
+.wiki-content a { color: var(--moss); text-decoration: underline; text-underline-offset: 2px; }
+.wiki-content a:hover { color: var(--moss-hover); }
+.wiki-content img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; margin: 18px 0; }
 .wiki-content table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px; }
 .wiki-content th { text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted); }
 .wiki-content th, .wiki-content td { border: 1px solid var(--rule); padding: 8px 12px; }
@@ -158,6 +161,9 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .editor-toolbar .sep { width: 1px; background: var(--rule); margin: 4px 4px; }
 
 .tiptap { outline: none; font-size: 15px; min-height: 300px; }
+.tiptap a { color: var(--moss); text-decoration: underline; text-underline-offset: 2px; }
+.tiptap img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; }
+.tiptap img.ProseMirror-selectednode { outline: 2px solid var(--moss); }
 .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--rule-strong); float: left; height: 0; pointer-events: none; }
 .tiptap:focus { outline: none; }
 

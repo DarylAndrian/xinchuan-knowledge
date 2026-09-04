@@ -14,9 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
 ### Added
 
 - Editable page URL slugs in the Editor inspector (Page settings), with collision detection
+- Hyperlinks and image embeds in the editor (new toolbar buttons, auto-converted Drive/Dropbox links, links open in a new tab)
 
 ### Fixed
 
