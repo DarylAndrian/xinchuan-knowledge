@@ -14,9 +14,16 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-05
+
+### Changed
+
+- Collection sidebar actions collapsed into a ... menu with dropdown (New page, Edit/Delete for superadmins)
+
 ### Fixed
 
 - Harden auto-deploy: fetch+reset --hard (lock-file drift no longer jams deploys), fresh .next cache each build, null-guard usePathname type error
+- Title autosave no longer saves the one-keystroke-behind state; pending saves flush before switching pages
 
 ## [1.1.0] - 2026-09-05
 

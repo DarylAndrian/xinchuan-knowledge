@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
-  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus,
+  Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -39,8 +39,17 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [collectionError, setCollectionError] = useState<string | null>(null);
   const [slugInput, setSlugInput] = useState("");
   const [slugError, setSlugError] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLSpanElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextUpdate = useRef(false);
+  // Fresh-value mirrors: the debounced saver must read these, never render
+  // closures — otherwise a keystroke's save sends the pre-keystroke (-1) title.
+  const titleRef = useRef("");
+  const selectedIdRef = useRef<number | null>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const slugTouchedRef = useRef(false);
+  const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
 
   const selected = pages.find((p) => p.id === selectedId) || null;
 
@@ -51,12 +60,18 @@ export default function EditorShell({ collections: initialCollections, pages: in
     onUpdate: () => scheduleSave(),
   });
 
+  // Mirror render values for the debounced saver (see refs above).
+  titleRef.current = title;
+  selectedIdRef.current = selectedId;
+  editorRef.current = editor;
+
   /* ----- load selection into editor ----- */
   useEffect(() => {
     if (!selected || !editor) return;
     setTitle(selected.title);
     setSlugInput(selected.slug);
     setSlugError(null);
+    slugTouchedRef.current = false;
     skipNextUpdate.current = true;
     try {
       const json = JSON.parse(selected.content_json || "{}");
@@ -68,38 +83,93 @@ export default function EditorShell({ collections: initialCollections, pages: in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, editor]);
 
-  /* ----- autosave ----- */
+  /* ----- autosave (snapshot fresh values; never render closures) ----- */
   const scheduleSave = useCallback(() => {
     if (skipNextUpdate.current) {
       skipNextUpdate.current = false;
       return;
     }
+    const pageId = selectedIdRef.current;
+    if (pageId == null) return;
     setSaveState("dirty");
+    pendingSave.current = { pageId, title: titleRef.current };
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveNow(), 900);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, title]);
+  }, []);
 
   async function saveNow() {
-    if (!selected || !editor) return;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const pending = pendingSave.current;
+    const ed = editorRef.current;
+    if (!pending || !ed) return;
+    pendingSave.current = null;
     setSaveState("saving");
-    const res = await fetch(`/api/pages/${selected.id}`, {
+    const res = await fetch(`/api/pages/${pending.pageId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title,
-        content_json: JSON.stringify(editor.getJSON()),
-        content_html: editor.getHTML(),
+        title: pending.title,
+        content_json: JSON.stringify(ed.getJSON()),
+        content_html: ed.getHTML(),
       }),
     });
     if (res.ok) {
       const updated = (await res.json()) as PageRow;
       setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-      setSaveState("saved");
+      if (!slugTouchedRef.current) setSlugInput(updated.slug);
+      // Another keystroke may have queued a newer save while this one flew.
+      setSaveState(pendingSave.current ? "dirty" : "saved");
     } else {
       setSaveState("dirty");
     }
   }
+
+  /** Save any pending changes now (used before switching/deleting pages). */
+  async function flushSave() {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (pendingSave.current) await saveNow();
+  }
+
+  /** Switch pages only after the current page's pending save has landed,
+      so a late timer can never write one page's content into another. */
+  async function selectPage(id: number | null) {
+    await flushSave();
+    setOpenMenuId(null);
+    setSelectedId(id);
+  }
+
+  // Don't lose the last <900ms of typing when leaving the editor.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveNow();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Close the collection action menu on outside click / Escape.
+  useEffect(() => {
+    if (openMenuId == null) return;
+    function onDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenuId(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMenuId(null);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openMenuId]);
 
   /* ----- actions ----- */
   async function createPage(collectionId: number, parentId: number | null) {
@@ -111,7 +181,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
     if (!res.ok) return;
     const page = (await res.json()) as PageRow;
     setPages((ps) => [...ps, page]);
-    setSelectedId(page.id);
+    await selectPage(page.id);
   }
 
   async function createCollection() {
@@ -180,6 +250,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
       setCollectionError(data.error || "Could not delete collection.");
       return;
     }
+    // Abandon any pending page save — those pages are gone.
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingSave.current = null;
     setCollections((cs) => cs.filter((x) => x.id !== c.id));
     setPages((ps) => ps.filter((p) => p.collection_id !== c.id));
     if (selected && selected.collection_id === c.id) {
@@ -205,6 +278,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
 
   async function deletePage() {
     if (!selected || !confirm(`Delete “${selected.title}” and all its sub-pages?`)) return;
+    await flushSave();
     await fetch(`/api/pages/${selected.id}`, { method: "DELETE" });
     const remaining = pages.filter((p) => p.id !== selected.id && p.parent_id !== selected.id);
     setPages(remaining);
@@ -277,6 +351,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
     const updated = data as PageRow;
     setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     setSlugInput(updated.slug);
+    slugTouchedRef.current = false;
   }
 
   /* ----- derived tree ----- */
@@ -396,32 +471,46 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 <>
                   <div className="sb-label">
                     <Icon name={c.icon} size={12} /> {c.name}
-                    <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
-                      {isSuperadmin && (
-                        <>
-                          <button
-                            onClick={() => startEditingCollection(c)}
-                            style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
-                            title="Edit collection (name, description, icon)"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            onClick={() => deleteCollection(c)}
-                            style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
-                            title="Delete collection"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </>
-                      )}
+                    <span ref={openMenuId === c.id ? menuRef : undefined} style={{ marginLeft: "auto", position: "relative", display: "flex" }}>
                       <button
-                        onClick={() => createPage(c.id, null)}
-                        style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)" }}
-                        title="New page in this collection"
+                        onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                        style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)", display: "grid", placeItems: "center", padding: 2 }}
+                        title="Collection actions"
+                        aria-label={`Actions for ${c.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={openMenuId === c.id}
                       >
-                        <Plus size={12} />
+                        <MoreHorizontal size={14} />
                       </button>
+                      {openMenuId === c.id && (
+                        <span role="menu" aria-label={`Actions for ${c.name}`} className="coll-menu">
+                          <button
+                            role="menuitem"
+                            className="coll-menu-item"
+                            onClick={() => { setOpenMenuId(null); createPage(c.id, null); }}
+                          >
+                            <Plus size={12} /> New page
+                          </button>
+                          {isSuperadmin && (
+                            <>
+                              <button
+                                role="menuitem"
+                                className="coll-menu-item"
+                                onClick={() => { setOpenMenuId(null); startEditingCollection(c); }}
+                              >
+                                <Pencil size={12} /> Edit collection
+                              </button>
+                              <button
+                                role="menuitem"
+                                className="coll-menu-item danger"
+                                onClick={() => { setOpenMenuId(null); deleteCollection(c); }}
+                              >
+                                <Trash2 size={12} /> Delete collection
+                              </button>
+                            </>
+                          )}
+                        </span>
+                      )}
                     </span>
                   </div>
                   {c.description && (
@@ -433,7 +522,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {(treeByCollection.get(c.id) || []).map(({ page, depth }) => (
                   <button
                     key={page.id}
-                    onClick={() => setSelectedId(page.id)}
+                    onClick={() => selectPage(page.id)}
                     className={`${depth === 1 ? "lvl2" : depth >= 2 ? "lvl3" : ""} ${page.id === selectedId ? "active" : ""}`}
                   >
                     <span className="truncate">{page.title}</span>
@@ -493,6 +582,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 placeholder="Untitled"
                 onChange={(e) => {
                   setTitle(e.target.value);
+                  titleRef.current = e.target.value;
                   scheduleSave();
                 }}
               />
@@ -572,7 +662,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 <div className="flex gap-1.5">
                   <input
                     value={slugInput}
-                    onChange={(e) => setSlugInput(e.target.value)}
+                    onChange={(e) => { setSlugInput(e.target.value); slugTouchedRef.current = true; }}
                     onKeyDown={(e) => e.key === "Enter" && saveSlug()}
                     spellCheck={false}
                     autoCapitalize="off"

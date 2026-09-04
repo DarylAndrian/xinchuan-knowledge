@@ -67,6 +67,13 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .tree .lvl3 { padding-left: 44px; }
 .tree .add { color: var(--ink-muted); opacity: .75; }
 
+/* ---------- collection action menu ---------- */
+.coll-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 172px; background: var(--canvas); border: 1px solid var(--rule-strong); border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 1px; }
+.coll-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; border-radius: 3px; background: none; border: 0; font-family: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.coll-menu-item:hover { background: var(--surface); }
+.coll-menu-item.danger { color: var(--brick); }
+.coll-menu-item.danger:hover { background: rgba(166, 72, 58, .08); }
+
 .wiki-main { padding: 40px 56px 96px; min-width: 0; display: flex; flex-direction: column; align-items: center; }
 .article { width: 100%; max-width: 68ch; }
 .article.wide { max-width: 78ch; }
