@@ -37,7 +37,7 @@ export default function TopBar({
   }
 
   const navLink = (href: string, label: string) => {
-    const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+    const active = href === "/" ? pathname === "/" : (pathname ?? "").startsWith(href);
     return (
       <Link
         href={href}

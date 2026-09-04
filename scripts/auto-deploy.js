@@ -194,9 +194,14 @@ if (!acquireLock()) {
 }
 
 try {
-  // 1. Git pull
+  // 1. Sync to remote. fetch + reset --hard (NOT git pull): this is a
+  //    deploy-only machine — the tree must always mirror origin/main exactly.
+  //    A plain pull aborts when any local file is dirty (e.g. package-lock.json
+  //    rewritten by npm install after a version bump), which jammed every
+  //    subsequent deploy on 2026-09-04. reset --hard is immune to that.
   const preCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
-  sh("git pull", "git pull --ff-only origin main", { timeout: 120_000 });
+  sh("git fetch", "git fetch origin main", { timeout: 120_000 });
+  sh("git reset", "git reset --hard origin/main");
   const postCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
 
   if (preCommit === postCommit) {
@@ -208,10 +213,13 @@ try {
 
   log(`[deploy] ${preCommit.slice(0, 8)} -> ${postCommit.slice(0, 8)}`);
 
-  // 2. npm install (always — safer than diffing package.json)
+  // 2. npm install (always — repairs any drift in node_modules; a dirty
+  //    lockfile afterwards is harmless since step 1 wipes local changes)
   sh("npm install", "npm install --prefer-offline", { timeout: 120_000 });
 
-  // 3. npm build
+  // 3. Fresh build — wipe the .next cache first. Stale webpack cache can
+  //    produce phantom "Module not found" errors for files that exist.
+  try { fs.rmSync(path.join(REPO, ".next"), { recursive: true, force: true }); } catch (_e) {}
   sh("npm build", "npm run build", { timeout: 300_000 });
 
   // 4. Spawn finisher (detached — survives the pm2 restart below)
