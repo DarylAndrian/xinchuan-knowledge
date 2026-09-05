@@ -395,7 +395,14 @@ export default function EditorShell({ collections: initialCollections, pages: in
     icon: React.ReactNode,
     label: string
   ) => (
-    <button type="button" onClick={onClick} className={active ? "is-active" : ""} title={label} aria-label={label}>
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={active ? "is-active" : ""}
+      title={label}
+      aria-label={label}
+    >
       {icon}
     </button>
   );

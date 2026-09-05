@@ -14,9 +14,13 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-05
+
 ### Fixed
 
 - Auto-deploy installs devDependencies (NODE_ENV scrub + --include=dev) so production builds no longer fail on missing tailwindcss
+- Editor headings, lists, tables, quotes, code blocks and dividers now display correctly (styles were only applied on published pages)
+- Catalogue lists show bullets and numbers again (Tailwind preflight had stripped list styles)
 
 ## [1.1.1] - 2026-09-05
 
