@@ -14,6 +14,16 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-05
+
+### Changed
+
+- User accounts keyed by username instead of email (schema migration renames the column; login/create-user/APIs updated)
+
+### Fixed
+
+- 500 error when deleting a user who had edited pages (FK violation on pages.updated_by - now cleared in a transaction)
+
 ## [1.1.3] - 2026-09-05
 
 ### Fixed

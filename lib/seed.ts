@@ -123,15 +123,18 @@ export function seedIfNeeded(database: DatabaseSync): void {
 
 function seedAll(database: DatabaseSync): void {
   const hash = (pw: string) => bcrypt.hashSync(pw, 10);
-  const email = process.env.SUPERADMIN_EMAIL || "admin@xinchuan.local";
-  const password = process.env.SUPERADMIN_PASSWORD || "xinchuan-admin";
+  // Seed accounts (2026-09-05): usernames, not emails. Change the superadmin
+  // credentials on a fresh install via SUPERADMIN_USERNAME / SUPERADMIN_PASSWORD
+  // in .env.local (real credentials are set directly in the production DB).
+  const superadminUsername = process.env.SUPERADMIN_USERNAME || "admin";
+  const superadminPassword = process.env.SUPERADMIN_PASSWORD || "xinchuan-admin";
 
   const insertUser = database.prepare(
-    "INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, ?)"
+    "INSERT INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)"
   );
-  const superadminId = Number(insertUser.run(email, "Sarah Admin", hash(password), "superadmin").lastInsertRowid);
-  const danaId = Number(insertUser.run("dana@xinchuan.local", "Dana Writer", hash("xinchuan-admin"), "admin").lastInsertRowid);
-  const mikaId = Number(insertUser.run("mika@xinchuan.local", "Mika Reader", hash("xinchuan-comment"), "commentator").lastInsertRowid);
+  const superadminId = Number(insertUser.run(superadminUsername, "Site Admin", hash(superadminPassword), "superadmin").lastInsertRowid);
+  const danaId = Number(insertUser.run("editor", "Dana Writer", hash("xinchuan-admin"), "admin").lastInsertRowid);
+  const mikaId = Number(insertUser.run("mika", "Mika Reader", hash("xinchuan-comment"), "commentator").lastInsertRowid);
 
   const insertCollection = database.prepare(
     "INSERT INTO collections (name, slug, description, icon, position) VALUES (?, ?, ?, ?, ?)"

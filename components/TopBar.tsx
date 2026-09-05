@@ -97,7 +97,7 @@ export default function TopBar({
               <div className="absolute right-0 top-[calc(100%+6px)] w-56 rounded border border-rule-strong bg-canvas py-1.5 shadow-none">
                 <div className="border-b border-rule px-3 pb-2 pt-1">
                   <div className="text-[13px] font-semibold">{user.name}</div>
-                  <div className="text-[12px] text-ink-muted">{user.email}</div>
+                  <div className="text-[12px] text-ink-muted">{user.username}</div>
                   <span className="role-mark role-admin mt-1 inline-block">{user.role}</span>
                 </div>
                 {user.role === "superadmin" && (

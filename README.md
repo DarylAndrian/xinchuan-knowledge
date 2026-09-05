@@ -46,16 +46,16 @@ npm start
 
 ## Seeded accounts
 
-| Role | Email | Password |
+| Role | Username | Password |
 | --- | --- | --- |
-| Superadmin | `admin@xinchuan.local` | `xinchuan-admin` |
-| Admin | `dana@xinchuan.local` | `xinchuan-admin` |
-| Commentator | `mika@xinchuan.local` | `xinchuan-comment` |
+| Superadmin | `admin` | `xinchuan-admin` |
+| Admin | `editor` | `xinchuan-admin` |
+| Commentator | `mika` | `xinchuan-comment` |
 
 Override the superadmin credentials on first seed via `.env.local`:
 
 ```env
-SUPERADMIN_EMAIL=you@example.com
+SUPERADMIN_USERNAME=your-username
 SUPERADMIN_PASSWORD=your-password
 ```
 

@@ -4,17 +4,20 @@ import { db } from "@/lib/db";
 import { createSession, SESSION_COOKIE, getSessionUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json().catch(() => ({}));
-  if (!email || !password) {
-    return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+  const body = await req.json().catch(() => ({}));
+  // Accept `username` (new) and `email` (legacy clients) as the login field.
+  const username = String(body.username ?? body.email ?? "").trim();
+  const password = String(body.password ?? "");
+  if (!username || !password) {
+    return NextResponse.json({ error: "Username and password are required." }, { status: 400 });
   }
   const user = db
-    .prepare("SELECT * FROM users WHERE lower(email) = lower(?)")
-    .get(String(email).trim()) as
+    .prepare("SELECT * FROM users WHERE lower(username) = lower(?)")
+    .get(username) as
     | { id: number; password_hash: string; suspended: number }
     | undefined;
-  if (!user || !bcrypt.compareSync(String(password), user.password_hash)) {
-    return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return NextResponse.json({ error: "Invalid username or password." }, { status: 401 });
   }
   if (user.suspended) {
     return NextResponse.json({ error: "This account is suspended." }, { status: 403 });

@@ -7,7 +7,7 @@ const SESSION_DAYS = 30;
 
 export interface SessionUser {
   id: number;
-  email: string;
+  username: string;
   name: string;
   role: UserRow["role"];
 }
@@ -19,7 +19,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
   const row = db
     .prepare(
-      `SELECT u.id, u.email, u.name, u.role, u.suspended, s.expires_at
+      `SELECT u.id, u.username, u.name, u.role, u.suspended, s.expires_at
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ?`
     )
@@ -32,7 +32,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return null;
   }
   if (row.suspended) return null;
-  return { id: row.id, email: row.email, name: row.name, role: row.role };
+  return { id: row.id, username: row.username, name: row.name, role: row.role };
 }
 
 export function createSession(userId: number): { token: string; maxAge: number } {

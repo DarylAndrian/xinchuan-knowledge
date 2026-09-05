@@ -26,7 +26,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [error, setError] = useState<string | null>(null);
 
   const [newName, setNewName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
+  const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<Role>("commentator");
 
@@ -65,7 +65,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   }
 
   async function deleteUser(u: SafeUser) {
-    if (!confirm(`Delete ${u.name} (${u.email})? Their comments will be removed.`)) return;
+    if (!confirm(`Delete ${u.name} (${u.username})? Their comments will be removed.`)) return;
     const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return flashError(data.error || "Delete failed.");
@@ -78,13 +78,13 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, email: newEmail, password: newPassword, role: newRole }),
+      body: JSON.stringify({ name: newName, username: newUsername, password: newPassword, role: newRole }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return flashError(data.error || "Could not create user.");
     setUsers((us) => [...us, data]);
     setNewName("");
-    setNewEmail("");
+    setNewUsername("");
     setNewPassword("");
     setNewRole("commentator");
     flash("User created.");
@@ -178,7 +178,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                   <td>
                     <b>{u.name}</b>
                     <br />
-                    <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>{u.email}</span>
+                    <span style={{ color: "var(--ink-muted)", fontSize: 12 }}>{u.username}</span>
                   </td>
                   <td>
                     <select
@@ -219,7 +219,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
           <form onSubmit={createUser} className="mt-3 max-w-[520px]" style={{ borderTop: "1px solid var(--rule-strong)", paddingTop: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div className="field"><label>Name</label><input value={newName} onChange={(e) => setNewName(e.target.value)} required /></div>
-              <div className="field"><label>Email</label><input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required /></div>
+              <div className="field"><label>Username</label><input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required autoComplete="off" /></div>
               <div className="field"><label>Password (6+ chars)</label><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={6} /></div>
               <div className="field">
                 <label>Role</label>

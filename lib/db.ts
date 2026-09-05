@@ -6,7 +6,7 @@ import { seedIfNeeded } from "./seed";
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT UNIQUE NOT NULL,
+  username TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('superadmin','admin','commentator')),
@@ -72,7 +72,23 @@ function createDb() {
   database.exec("PRAGMA foreign_keys = ON;");
   database.exec("PRAGMA busy_timeout = 10000;");
   database.exec(SCHEMA);
+  migrateEmailToUsername(database);
   return database;
+}
+
+/**
+ * One-time migration: users.email -> users.username (2026-09-05).
+ * Existing databases have the old column; CREATE TABLE IF NOT EXISTS is a
+ * no-op there, so rename in place. Idempotent: only runs while the old
+ * column still exists.
+ */
+function migrateEmailToUsername(database: DatabaseSync) {
+  const cols = database.prepare("PRAGMA table_info(users)").all() as unknown as { name: string }[];
+  const hasEmail = cols.some((c) => c.name === "email");
+  const hasUsername = cols.some((c) => c.name === "username");
+  if (hasEmail && !hasUsername) {
+    database.exec("ALTER TABLE users RENAME COLUMN email TO username;");
+  }
 }
 
 const globalForDb = globalThis as unknown as { xkDb?: DatabaseSync; xkSeeded?: boolean };
@@ -107,7 +123,7 @@ export type Role = "superadmin" | "admin" | "commentator";
 
 export interface UserRow {
   id: number;
-  email: string;
+  username: string;
   name: string;
   password_hash: string;
   role: Role;

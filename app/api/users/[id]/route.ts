@@ -73,8 +73,23 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       return NextResponse.json({ error: "Cannot delete the last superadmin." }, { status: 400 });
     }
   }
-  db.prepare("DELETE FROM comments WHERE author_id = ?").run(targetId);
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
-  db.prepare("DELETE FROM users WHERE id = ?").run(targetId);
+
+  try {
+    db.exec("BEGIN");
+    db.prepare("DELETE FROM comments WHERE author_id = ?").run(targetId);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
+    // pages.updated_by references users(id) WITHOUT ON DELETE, so an FK
+    // violation ("FOREIGN KEY constraint failed" -> unhandled throw -> 500)
+    // happened when deleting a user who had ever edited a page. Clear the
+    // attribution instead of cascading: the page stays, the editor stamp
+    // goes. Same for any future soft references.
+    db.prepare("UPDATE pages SET updated_by = NULL WHERE updated_by = ?").run(targetId);
+    db.prepare("DELETE FROM users WHERE id = ?").run(targetId);
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore */ }
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Delete failed: ${msg}` }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

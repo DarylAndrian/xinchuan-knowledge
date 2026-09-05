@@ -21,24 +21,25 @@ export async function POST(req: NextRequest) {
   if (!isSuperadmin(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
-  const email = String(body.email || "").trim().toLowerCase();
+  // Accept `username` (new) and `email` (legacy clients) as the login field.
+  const username = String(body.username ?? body.email ?? "").trim();
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
   const role: Role = ROLES.includes(body.role) ? body.role : "commentator";
 
-  if (!email || !name || password.length < 6) {
+  if (!username || !name || password.length < 6) {
     return NextResponse.json(
-      { error: "Name, email and a password of 6+ characters are required." },
+      { error: "Name, username and a password of 6+ characters are required." },
       { status: 400 }
     );
   }
-  if (db.prepare("SELECT id FROM users WHERE lower(email) = ?").get(email)) {
-    return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 });
+  if (db.prepare("SELECT id FROM users WHERE lower(username) = ?").get(username.toLowerCase())) {
+    return NextResponse.json({ error: "A user with this username already exists." }, { status: 409 });
   }
 
   const info = db
-    .prepare("INSERT INTO users (email, name, password_hash, role) VALUES (?, ?, ?, ?)")
-    .run(email, name, bcrypt.hashSync(password, 10), role);
+    .prepare("INSERT INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)")
+    .run(username, name, bcrypt.hashSync(password, 10), role);
 
   const created = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(info.lastInsertRowid)) as unknown as UserRow;
   const { password_hash, ...safe } = created;
