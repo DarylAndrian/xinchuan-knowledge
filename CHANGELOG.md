@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-09-05
+
+### Fixed
+
+- Auto-deploy runs next build with NODE_ENV=production so Next.js no longer exits 1 on the non-standard NODE_ENV warning
+
 ## [1.1.2] - 2026-09-05
 
 ### Fixed

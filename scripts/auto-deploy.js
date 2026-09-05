@@ -56,14 +56,7 @@ function log(msg) {
 }
 
 // ------------------------------------------------------------------ env/PATH
-function buildEnv() {
-  // NOTE: the webhook handler inherits NODE_ENV=production from the Next
-  // server, and `npm install` with NODE_ENV=production silently SKIPS
-  // devDependencies (tailwindcss, postcss, ...) — which then fails the
-  // production build with "Cannot find module 'tailwindcss'".
-  // Forcing "development" here only affects dependency installation:
-  // `next build` sets NODE_ENV=production internally, so the built output
-  // is unchanged.
+function baseEnv() {
   const extra = [
     path.dirname(process.execPath),
     "C:\\Program Files\\nodejs",
@@ -77,11 +70,26 @@ function buildEnv() {
   const pathSep = process.platform === "win32" ? ";" : ":";
   return {
     ...process.env,
-    NODE_ENV: "development",
     PATH: extra.join(pathSep) + pathSep + (process.env.PATH || ""),
     GIT_TERMINAL_PROMPT: "0",
     GIT_EDITOR: "true",
   };
+}
+
+// Webhook inherits NODE_ENV=production from pm2/Next. `npm install` then
+// skips devDependencies (tailwindcss, …) unless we drop it. Do NOT set
+// NODE_ENV=development globally: `next build` with that value is treated
+// as non-standard and Next.js exits 1.
+function installEnv() {
+  const env = baseEnv();
+  delete env.NODE_ENV;
+  return env;
+}
+
+function productionEnv() {
+  const env = baseEnv();
+  env.NODE_ENV = "production";
+  return env;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -90,7 +98,7 @@ function sh(label, cmd, opts = {}) {
   const result = spawnSync(cmd, {
     shell: true,
     cwd: REPO,
-    env: buildEnv(),
+    env: opts.env || baseEnv(),
     timeout: opts.timeout || 300_000,
     stdio: "pipe",
     encoding: "utf8",
@@ -99,7 +107,9 @@ function sh(label, cmd, opts = {}) {
   if (result.stdout) log(`[out] ${result.stdout.trim().split("\n").join("\n[out] ")}`);
   if (result.stderr) log(`[err] ${result.stderr.trim().split("\n").join("\n[err] ")}`);
   if (result.status !== 0) {
-    throw new Error(`${label} failed (exit ${result.status}): ${result.stderr || result.stdout}`);
+    const detail = (result.stderr || result.stdout || "").trim();
+    const tail = detail.split(/\r?\n/).slice(-12).join(" | ");
+    throw new Error(`${label} failed (exit ${result.status}): ${tail}`);
   }
   return result;
 }
@@ -171,8 +181,8 @@ if (process.argv[2] === "--finish") {
       try {
         // Rollback: checkout previous commit, rebuild, restart
         sh("rollback: git checkout", `git -C "${REPO}" checkout HEAD~1`);
-        sh("rollback: npm install", `npm install --prefer-offline --include=dev`, { timeout: 120_000 });
-        sh("rollback: npm build", `npm run build`, { timeout: 300_000 });
+        sh("rollback: npm install", `npm install --prefer-offline --include=dev`, { timeout: 120_000, env: installEnv() });
+        sh("rollback: npm build", `npm run build`, { timeout: 300_000, env: productionEnv() });
         sh("rollback: pm2 restart", `pm2 restart xinchuan`);
         const rollbackOk = await healthCheck();
         writeStatus(rollbackOk ? "rollback-ok" : "rollback-failed", meta);
@@ -223,21 +233,21 @@ try {
 
   // 2. npm install (always — repairs any drift in node_modules; a dirty
   //    lockfile afterwards is harmless since step 1 wipes local changes).
-  //    --include=dev is belt-and-suspenders with the NODE_ENV scrub above:
-  //    devDependencies (tailwindcss, ...) must be present to build.
-  sh("npm install", "npm install --prefer-offline --include=dev", { timeout: 120_000 });
+  //    --include=dev plus a cleared NODE_ENV so production env does not
+  //    omit tailwindcss/postcss. Build uses NODE_ENV=production separately.
+  sh("npm install", "npm install --prefer-offline --include=dev", { timeout: 120_000, env: installEnv() });
 
   // 3. Fresh build — wipe the .next cache first. Stale webpack cache can
   //    produce phantom "Module not found" errors for files that exist.
   try { fs.rmSync(path.join(REPO, ".next"), { recursive: true, force: true }); } catch (_e) {}
-  sh("npm build", "npm run build", { timeout: 300_000 });
+  sh("npm build", "npm run build", { timeout: 300_000, env: productionEnv() });
 
   // 4. Spawn finisher (detached — survives the pm2 restart below)
   const finisher = spawn(process.execPath, [__filename, "--finish", JSON.stringify({ ...meta, commit: postCommit })], {
     cwd: REPO,
     detached: true,
     stdio: "ignore",
-    env: buildEnv(),
+    env: productionEnv(),
     windowsHide: true,
   });
   finisher.unref();
