@@ -2,15 +2,16 @@
 
 A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Public reading pages, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
 
-Current version: **1.1.3** — see [CHANGELOG.md](./CHANGELOG.md).
+Current version: **1.3.0** — see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Features
 
 - **Public reader (Catalogue)** — published pages are readable anonymously (toggleable in settings). Collection sidebar tree, breadcrumbs, generated table of contents, 68ch reading column.
 - **Anchored comments** — select any text on a page to attach a comment thread to that exact passage. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any.
 - **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers — all styled to match the published catalogue page. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, create pages and collections.
+- **Light and dark themes** — follows the system preference on first visit, supports a persistent manual toggle in the top bar, and themes native controls and editor content consistently.
 - **Roles** — `superadmin` > `admin` > `commentator`. Editors manage content; commentators comment; anonymous visitors read published pages.
-- **Superadmin panel** — reached from the profile menu (avatar, top right): user management (create, change role, suspend, delete with last-superadmin protection), collection management (rename, description, [Lucide](https://lucide.dev/icons) icon picker, delete), and site settings (site name, public viewing, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu.
+- **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role, suspend, delete with last-superadmin protection); collection management (rename, description, [Lucide](https://lucide.dev/icons) icon picker, delete); and site settings (site name, public viewing, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu.
 - **Search** — keyword search over published page titles and content with context snippets.
 - **Version badge** — the current app version (from `package.json`) is shown small at the top right of the nav bar.
 
@@ -71,11 +72,12 @@ app/
   admin/                    Superadmin panel (users + collections + settings)
   api/                      auth, pages, collections (incl. [id] PATCH/DELETE), comments, users, settings
 components/
-  TopBar.tsx                Nav (Home / Catalogue / Editor) + profile menu + version badge
+  TopBar.tsx                Nav + theme toggle + profile menu + version badge
+  ThemeToggle.tsx           Persistent light/dark theme control
   CatalogueSidebar.tsx      Collection tree for the reader
   PageReader.tsx            Article + TOC + anchored comment threads
   EditorShell.tsx           TipTap editor, tree, inspector, autosave, collection editing
-  AdminPanel.tsx            Users/roles table + collections + site settings
+  AdminPanel.tsx            Sticky admin nav + users/roles actions + collections + settings
   Icon.tsx                  Lucide icon lookup by name + IconPicker grid
 lib/
   db.ts                     node:sqlite singleton, schema, settings helpers
@@ -90,7 +92,7 @@ scripts/
 
 ## Design system
 
-Flat paper-and-moss palette, one sans-serif typeface (Inter), no shadows or pill badges, 1px hairlines. Brass is used for underline-style markers (highlights, “edited” stamps) — saturated color only on active nav items and callouts. Full token list lives in `app/globals.css` (`:root`) and `tailwind.config.ts`.
+Light and dark paper-and-moss palettes, one sans-serif typeface (Inter), 1px hairlines, and restrained elevation shadows limited to floating menus. Brass is used for focus rings and underline-style markers (highlights, “edited” stamps); saturated color is reserved for active navigation, primary actions, and status feedback. Full token lists live in `app/globals.css` (`:root` and `[data-theme="dark"]`) and are shared with Tailwind through `tailwind.config.ts`.
 
 ## Changelog management
 

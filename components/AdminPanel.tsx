@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Settings, Trash2, ScrollText, Plus, Library, Pencil } from "lucide-react";
+import { Ban, CircleCheck, MoreHorizontal, Users, Settings, Trash2, ScrollText, Plus, Library, Pencil } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import type { UserRow, Role, CollectionRow } from "@/lib/db";
 
@@ -15,6 +15,105 @@ interface Props {
 
 type SafeUser = Omit<UserRow, "password_hash">;
 
+function UserActionMenu({
+  user,
+  canDelete,
+  onToggleSuspended,
+  onDelete,
+}: {
+  user: SafeUser;
+  canDelete: boolean;
+  onToggleSuspended: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function run(action: () => void) {
+    setOpen(false);
+    action();
+  }
+
+  function moveFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (current + 1) % items.length
+          : (current - 1 + items.length) % items.length;
+    items[next]?.focus();
+  }
+
+  return (
+    <div className="user-action" ref={wrapperRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="user-action-trigger"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={`Actions for ${user.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        title={`Actions for ${user.name}`}
+      >
+        <MoreHorizontal size={17} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          className="user-action-menu"
+          role="menu"
+          aria-label={`Actions for ${user.name}`}
+          onKeyDown={moveFocus}
+        >
+          <button type="button" role="menuitem" onClick={() => run(onToggleSuspended)}>
+            {user.suspended ? <CircleCheck size={15} aria-hidden="true" /> : <Ban size={15} aria-hidden="true" />}
+            {user.suspended ? "Reactivate user" : "Suspend user"}
+          </button>
+          {canDelete && (
+            <button type="button" role="menuitem" className="danger" onClick={() => run(onDelete)}>
+              <Trash2 size={15} aria-hidden="true" />
+              Delete user
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel({ users: initialUsers, collections: initialCollections, settings: initialSettings, currentUserId }: Props) {
   const router = useRouter();
   const [users, setUsers] = useState<SafeUser[]>(
@@ -24,6 +123,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [settings, setSettings] = useState(initialSettings);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("users");
 
   const [newName, setNewName] = useState("");
   const [newUsername, setNewUsername] = useState("");
@@ -34,6 +134,23 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editIcon, setEditIcon] = useState("book");
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) setActiveSection(visible.target.id);
+      },
+      { rootMargin: "-72px 0px -65% 0px", threshold: [0, 0.1, 0.25] }
+    );
+    const sections = ["users", "collections", "settings"]
+      .map((id) => document.getElementById(id))
+      .filter((section): section is HTMLElement => !!section);
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
 
   const counts = {
     total: users.length,
@@ -143,9 +260,30 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
     <div className="sa-layout">
       <aside className="sa-nav">
         <div className="sb-label">Superadmin</div>
-        <a href="#users" className="active"><Users size={14} /> Users &amp; Roles</a>
-        <a href="#collections"><Library size={14} /> Collections</a>
-        <a href="#settings"><Settings size={14} /> Site Settings</a>
+        <a
+          href="#users"
+          className={activeSection === "users" ? "active" : undefined}
+          aria-current={activeSection === "users" ? "location" : undefined}
+          onClick={() => setActiveSection("users")}
+        >
+          <Users size={14} /> Users &amp; Roles
+        </a>
+        <a
+          href="#collections"
+          className={activeSection === "collections" ? "active" : undefined}
+          aria-current={activeSection === "collections" ? "location" : undefined}
+          onClick={() => setActiveSection("collections")}
+        >
+          <Library size={14} /> Collections
+        </a>
+        <a
+          href="#settings"
+          className={activeSection === "settings" ? "active" : undefined}
+          aria-current={activeSection === "settings" ? "location" : undefined}
+          onClick={() => setActiveSection("settings")}
+        >
+          <Settings size={14} /> Site Settings
+        </a>
         <a href="#users"><Trash2 size={14} /> Moderation</a>
         <a href="#users"><ScrollText size={14} /> Audit Log</a>
       </aside>
@@ -197,18 +335,13 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                       {u.suspended ? "Suspended" : "Active"}
                     </span>
                   </td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => patchUser(u.id, { suspended: u.suspended ? 0 : 1 })}
-                    >
-                      {u.suspended ? "Reactivate" : "Suspend"}
-                    </button>
-                    {u.id !== currentUserId && (
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u)}>
-                        Delete
-                      </button>
-                    )}
+                  <td className="user-actions-cell">
+                    <UserActionMenu
+                      user={u}
+                      canDelete={u.id !== currentUserId}
+                      onToggleSuspended={() => patchUser(u.id, { suspended: u.suspended ? 0 : 1 })}
+                      onDelete={() => deleteUser(u)}
+                    />
                   </td>
                 </tr>
               ))}

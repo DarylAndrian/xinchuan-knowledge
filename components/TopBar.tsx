@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Search, Shield, LogOut, ChevronDown } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
+import ThemeToggle from "./ThemeToggle";
 
 export default function TopBar({
   user,
@@ -80,6 +81,8 @@ export default function TopBar({
           Search…
           <span className="ml-auto rounded border border-rule bg-canvas px-1.5 text-[10.5px]">⌘K</span>
         </Link>
+
+        <ThemeToggle />
 
         {user ? (
           <div className="relative" ref={menuRef}>

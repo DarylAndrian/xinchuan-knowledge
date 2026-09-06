@@ -14,6 +14,21 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-06
+
+### Added
+
+- Accessible light/dark theme toggle with system-preference detection, persisted preference, native control theming, and WCAG AA contrast
+
+### Changed
+
+- Users & Roles row actions now use a compact icon dropdown with action icons, outside-click dismissal, Escape support, and arrow-key navigation
+- Theme colors now share the same CSS design tokens across custom styles and Tailwind utilities
+
+### Fixed
+
+- Superadmin sidebar now remains sticky while scrolling, highlights the visible section, and becomes a sticky horizontal navigation bar on smaller screens
+
 ## [1.2.0] - 2026-09-05
 
 ### Changed

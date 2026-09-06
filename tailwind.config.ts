@@ -5,16 +5,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        canvas: "#F1F0EA",
-        surface: "#E8E6DC",
-        ink: "#23281F",
-        "ink-muted": "#5C6156",
-        moss: "#4B5D45",
-        "moss-hover": "#3A4936",
-        brass: "#B8863B",
-        brick: "#A6483A",
-        rule: "#D8D4C6",
-        "rule-strong": "#C3BEAC",
+        canvas: "var(--canvas)",
+        surface: "var(--surface)",
+        ink: "var(--ink)",
+        "ink-muted": "var(--ink-muted)",
+        moss: "var(--moss)",
+        "moss-hover": "var(--moss-hover)",
+        brass: "var(--brass)",
+        brick: "var(--brick)",
+        rule: "var(--rule)",
+        "rule-strong": "var(--rule-strong)",
       },
       fontFamily: {
         sans: ["Inter", "-apple-system", "Segoe UI", "sans-serif"],
