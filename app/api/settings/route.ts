@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting, setSetting, ensureSeeded } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { enforceSameOrigin } from "@/lib/security";
 
 const KEYS = ["site_name", "public_viewing", "open_registration", "comment_approval"];
 
 export async function GET() {
+  const user = await getSessionUser();
+  if (!user || user.role !== "superadmin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   ensureSeeded();
   const out: Record<string, string> = {};
   for (const k of KEYS) out[k] = getSetting(k, k === "site_name" ? "Xinchuan Knowledge Center" : k === "public_viewing" ? "1" : "0");
@@ -12,6 +17,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const user = await getSessionUser();
   if (!user || user.role !== "superadmin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

@@ -14,6 +14,29 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-07
+
+### Added
+
+- Automatic page revision history with editor attribution, five-minute autosave coalescing, a 50-entry history viewer, and recoverable revision restores
+- SQLite FTS5 index for relevance-ranked, prefix-aware search over published page titles and content
+- Anonymous read-only WebMCP tools for published-page search, page reading, collection listing, and recent updates, backed by narrow public JSON endpoints and requiring no PAT
+- Production security headers, same-origin mutation enforcement, login attempt throttling, secure production cookies, and allowlist HTML sanitization
+- Security-supported Next.js 16 and TipTap 3 dependency lines, replacing advisory-affected framework versions
+
+### Changed
+
+- Internal page, collection, comment, and settings APIs now enforce explicit reader/editor boundaries while the published website remains publicly accessible
+- Responsive top navigation now collapses into an accessible mobile menu; the Catalogue gains a mobile page drawer and the editor exposes navigation and settings on small screens
+- Article table-of-contents and comment rails move below the article at narrower widths instead of disappearing
+- Public search now uses normalized article text rather than matching raw HTML
+
+### Fixed
+
+- Page moves now validate collection ownership and prevent recursive parent cycles
+- Deleting a page tree or collection now also clears its FTS rows
+- Catalogue index no longer redirects anonymous readers to a draft when a collection has no published root page
+
 ## [1.3.0] - 2026-09-06
 
 ### Added

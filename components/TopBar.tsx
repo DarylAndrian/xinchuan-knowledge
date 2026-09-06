@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Search, Shield, LogOut, ChevronDown } from "lucide-react";
+import { Search, Shield, LogOut, ChevronDown, Menu, X } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 
@@ -19,6 +19,7 @@ export default function TopBar({
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const canEdit = !!user && (user.role === "admin" || user.role === "superadmin");
@@ -30,6 +31,11 @@ export default function TopBar({
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+    setMenuOpen(false);
+  }, [pathname]);
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -59,15 +65,15 @@ export default function TopBar({
 
   return (
     <header className="sticky top-0 z-50 border-b border-rule bg-canvas">
-      <div className="mx-auto flex h-[52px] max-w-[1360px] items-center gap-4 px-6">
-        <Link href="/" className="flex items-center gap-2 text-[14.5px] font-semibold tracking-tight">
-          <span className="grid h-6 w-6 place-items-center rounded border-[1.5px] border-ink text-[12px] font-bold">
+      <div className="mx-auto flex h-[52px] max-w-[1360px] items-center gap-2 px-3 md:gap-4 md:px-6">
+        <Link href="/" className="flex min-w-0 items-center gap-2 text-[14.5px] font-semibold tracking-tight">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded border-[1.5px] border-ink text-[12px] font-bold">
             X
           </span>
-          {siteName}
+          <span className="truncate sm:max-w-[260px]">{siteName}</span>
         </Link>
 
-        <nav className="ml-4 flex items-center gap-1">
+        <nav className="ml-4 hidden items-center gap-1 md:flex">
           {navLink("/", "Home")}
           {navLink("/catalogue", "Catalogue")}
           {canEdit && navLink("/editor", "Editor")}
@@ -75,7 +81,7 @@ export default function TopBar({
 
         <Link
           href="/search"
-          className="ml-auto flex max-w-[300px] flex-1 items-center gap-2 rounded border border-rule-strong px-3 py-[5px] text-[13px] text-ink-muted transition-colors hover:border-moss"
+          className="ml-auto hidden max-w-[300px] flex-1 items-center gap-2 rounded border border-rule-strong px-3 py-[5px] text-[13px] text-ink-muted transition-colors hover:border-moss md:flex"
         >
           <Search size={14} />
           Search…
@@ -85,7 +91,7 @@ export default function TopBar({
         <ThemeToggle />
 
         {user ? (
-          <div className="relative" ref={menuRef}>
+          <div className="relative hidden md:block" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
               className="flex items-center gap-1.5 rounded p-1 hover:bg-surface"
@@ -122,14 +128,39 @@ export default function TopBar({
             )}
           </div>
         ) : (
-          <Link href="/login" className="btn">
+          <Link href="/login" className="btn !hidden md:!inline-flex">
             Sign in
           </Link>
         )}
-        <span className="shrink-0 text-[11px] tabular-nums text-ink-muted" title={`Xinchuan Knowledge Center v${version}`}>
+        <span className="hidden shrink-0 text-[11px] tabular-nums text-ink-muted lg:inline" title={`Xinchuan Knowledge Center v${version}`}>
           v{version}
         </span>
+        <button
+          type="button"
+          className="theme-toggle md:hidden"
+          onClick={() => setMobileOpen((open) => !open)}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-site-menu"
+          aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+        >
+          {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
       </div>
+      {mobileOpen && (
+        <div id="mobile-site-menu" className="mobile-site-menu md:hidden">
+          <Link href="/" className={pathname === "/" ? "active" : ""}>Home</Link>
+          <Link href="/catalogue" className={(pathname ?? "").startsWith("/catalogue") ? "active" : ""}>Catalogue</Link>
+          {canEdit && <Link href="/editor" className={(pathname ?? "").startsWith("/editor") ? "active" : ""}>Editor</Link>}
+          <Link href="/search" className="mobile-site-search"><Search size={15} /> Search the wiki</Link>
+          {user?.role === "superadmin" && <Link href="/admin"><Shield size={15} /> Admin panel</Link>}
+          {user ? (
+            <button onClick={signOut}><LogOut size={15} /> Sign out · {user.name}</button>
+          ) : (
+            <Link href="/login">Sign in</Link>
+          )}
+          <span className="mobile-site-version">Xinchuan Knowledge Center v{version}</span>
+        </div>
+      )}
     </header>
   );
 }

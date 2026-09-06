@@ -7,6 +7,7 @@ import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
+  History, RotateCcw,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -21,6 +22,15 @@ interface Props {
 }
 
 type SaveState = "saved" | "dirty" | "saving";
+type RevisionSummary = {
+  id: number;
+  page_id: number;
+  title: string;
+  status: "draft" | "published";
+  created_at: string;
+  created_by: number | null;
+  editor_name?: string;
+};
 
 export default function EditorShell({ collections: initialCollections, pages: initialPages, userId, isSuperadmin = false }: Props) {
   const [collections, setCollections] = useState(initialCollections);
@@ -40,6 +50,10 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [slugInput, setSlugInput] = useState("");
   const [slugError, setSlugError] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const menuRef = useRef<HTMLSpanElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextUpdate = useRef(false);
@@ -75,13 +89,19 @@ export default function EditorShell({ collections: initialCollections, pages: in
     skipNextUpdate.current = true;
     try {
       const json = JSON.parse(selected.content_json || "{}");
-      editor.commands.setContent(json && json.type ? json : "", false);
+      editor.commands.setContent(json && json.type ? json : "", { emitUpdate: false });
     } catch {
-      editor.commands.setContent("", false);
+      editor.commands.setContent("", { emitUpdate: false });
     }
     setSaveState("saved");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, editor]);
+
+  useEffect(() => {
+    setShowHistory(false);
+    setRevisions([]);
+    setHistoryError(null);
+  }, [selectedId]);
 
   /* ----- autosave (snapshot fresh values; never render closures) ----- */
   const scheduleSave = useCallback(() => {
@@ -352,6 +372,51 @@ export default function EditorShell({ collections: initialCollections, pages: in
     setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     setSlugInput(updated.slug);
     slugTouchedRef.current = false;
+  }
+
+  async function loadHistory() {
+    if (!selected) return;
+    await flushSave();
+    setShowHistory(true);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const response = await fetch(`/api/pages/${selected.id}/revisions`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setHistoryError(data.error || "Could not load revision history.");
+    } else {
+      setRevisions(data.revisions || []);
+    }
+    setHistoryLoading(false);
+  }
+
+  async function restoreRevision(revision: RevisionSummary) {
+    if (!selected || !confirm(`Restore “${revision.title}” from ${formatRevisionDate(revision.created_at)}?`)) return;
+    setHistoryError(null);
+    const response = await fetch(`/api/pages/${selected.id}/revisions/${revision.id}/restore`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setHistoryError(data.error || "Could not restore this revision.");
+      return;
+    }
+    const updated = data.page as PageRow;
+    setPages((current) => current.map((page) => page.id === updated.id ? { ...page, ...updated } : page));
+    setTitle(updated.title);
+    titleRef.current = updated.title;
+    setSlugInput(updated.slug);
+    try {
+      const json = JSON.parse(updated.content_json || "{}");
+      editor?.commands.setContent(json && json.type ? json : "", { emitUpdate: false });
+    } catch {
+      editor?.commands.setContent("", { emitUpdate: false });
+    }
+    setSaveState("saved");
+    await loadHistory();
+  }
+
+  function formatRevisionDate(value: string) {
+    const date = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z");
+    return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   }
 
   /* ----- derived tree ----- */
@@ -692,6 +757,32 @@ export default function EditorShell({ collections: initialCollections, pages: in
                   ? "Anyone can read this page in the Catalogue."
                   : "Only admins can see this page. Publish to make it public."}
               </p>
+
+              <h4>Revision history</h4>
+              <button className="btn btn-sm" onClick={showHistory ? () => setShowHistory(false) : loadHistory}>
+                <History size={13} /> {showHistory ? "Hide history" : "View history"}
+              </button>
+              {showHistory && (
+                <div className="revision-list" aria-live="polite">
+                  {historyLoading && <p>Loading revisions…</p>}
+                  {historyError && <p className="revision-error">{historyError}</p>}
+                  {!historyLoading && !historyError && revisions.length === 0 && <p>No revisions yet.</p>}
+                  {revisions.map((revision, index) => (
+                    <div className="revision-item" key={revision.id}>
+                      <div>
+                        <b>{index === 0 ? "Current" : formatRevisionDate(revision.created_at)}</b>
+                        <span>{revision.title} · {revision.status}</span>
+                        <small>{revision.editor_name || "System"}{index === 0 ? ` · ${formatRevisionDate(revision.created_at)}` : ""}</small>
+                      </div>
+                      {index > 0 && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => restoreRevision(revision)} title="Restore this revision">
+                          <RotateCcw size={12} /> Restore
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <h4>Danger zone</h4>
               <button className="btn btn-danger btn-sm" onClick={deletePage}>

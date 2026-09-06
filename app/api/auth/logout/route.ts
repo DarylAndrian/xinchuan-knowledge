@@ -1,9 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { destroySession, SESSION_COOKIE } from "@/lib/auth";
+import { enforceSameOrigin } from "@/lib/security";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   await destroySession();
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+  res.cookies.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
   return res;
 }

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, slugify, PageRow } from "@/lib/db";
+import { db, slugify, PageRow, recordPageRevision, syncPageSearch } from "@/lib/db";
 import { getSessionUser, isEditor } from "@/lib/auth";
+import { enforceSameOrigin } from "@/lib/security";
 
 export async function GET() {
+  const user = await getSessionUser();
+  if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const pages = db
     .prepare("SELECT * FROM pages ORDER BY collection_id, position, title")
     .all() as unknown as PageRow[];
@@ -10,6 +13,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const user = await getSessionUser();
   if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -20,6 +25,14 @@ export async function POST(req: NextRequest) {
 
   if (!db.prepare("SELECT id FROM collections WHERE id = ?").get(collectionId)) {
     return NextResponse.json({ error: "Collection not found." }, { status: 400 });
+  }
+  if (parentId) {
+    const parent = db.prepare("SELECT collection_id FROM pages WHERE id = ?").get(parentId) as
+      | { collection_id: number }
+      | undefined;
+    if (!parent || parent.collection_id !== collectionId) {
+      return NextResponse.json({ error: "Parent page must belong to this collection." }, { status: 400 });
+    }
   }
 
   // unique slug within (collection, parent)
@@ -48,6 +61,9 @@ export async function POST(req: NextRequest) {
     )
     .run(collectionId, parentId, title, slug, pos, user!.id);
 
-  const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(Number(info.lastInsertRowid));
+  const pageId = Number(info.lastInsertRowid);
+  recordPageRevision(pageId, user!.id, true);
+  syncPageSearch(pageId);
+  const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId);
   return NextResponse.json(page, { status: 201 });
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Icon from "./Icon";
 import { getCollections, getCollectionPages, buildTree, TreeNode } from "@/lib/pages";
 import { isEditor, SessionUser } from "@/lib/auth";
+import { Menu } from "lucide-react";
 
 export default function CatalogueSidebar({
   activeHref,
@@ -29,8 +30,8 @@ export default function CatalogueSidebar({
       );
     });
 
-  return (
-    <aside className="wiki-sidebar">
+  const navigation = (
+    <>
       {collections.map((c) => {
         const pages = getCollectionPages(c.id);
         const tree = buildTree(pages);
@@ -44,6 +45,16 @@ export default function CatalogueSidebar({
           </div>
         );
       })}
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <details className="wiki-mobile-drawer">
+        <summary><Menu size={15} /> Browse pages</summary>
+        <div className="wiki-mobile-drawer-panel">{navigation}</div>
+      </details>
+      <aside className="wiki-sidebar">{navigation}</aside>
+    </>
   );
 }

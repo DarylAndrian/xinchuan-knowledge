@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { getSessionUser } from "@/lib/auth";
+import { db, getSetting } from "@/lib/db";
+import { getSessionUser, isEditor } from "@/lib/auth";
 import { getComments } from "@/lib/comments";
+import { enforceSameOrigin } from "@/lib/security";
 
 export async function GET(req: NextRequest) {
   const pageId = Number(req.nextUrl.searchParams.get("page_id"));
   if (!pageId) return NextResponse.json({ error: "page_id required" }, { status: 400 });
+  const page = db.prepare("SELECT status FROM pages WHERE id = ?").get(pageId) as
+    | { status: string }
+    | undefined;
+  if (!page) return NextResponse.json({ error: "Page not found." }, { status: 404 });
+  if (page.status !== "published" || getSetting("public_viewing", "1") !== "1") {
+    const user = await getSessionUser();
+    if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   return NextResponse.json(getComments(pageId));
 }
 
 export async function POST(req: NextRequest) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Sign in to comment." }, { status: 401 });
 

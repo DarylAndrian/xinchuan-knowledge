@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, slugify, CollectionRow, ensureSeeded } from "@/lib/db";
 import { getSessionUser, isEditor } from "@/lib/auth";
+import { enforceSameOrigin } from "@/lib/security";
 
 export async function GET() {
+  const user = await getSessionUser();
+  if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   ensureSeeded();
   const rows = db.prepare("SELECT * FROM collections ORDER BY position, name").all();
   return NextResponse.json(rows);
 }
 
 export async function POST(req: NextRequest) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const user = await getSessionUser();
   if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 

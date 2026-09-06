@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "fs";
-import { resolve } from "path";
+import { join } from "path";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
  * step timings. Answers "did my push deploy?" from any device.
  */
 export async function GET() {
-  const repoRoot = resolve(process.cwd());
-  const statusFile = resolve(repoRoot, "data/deploy-status.json");
-  const lockFile = resolve(repoRoot, "data/deploy.lock");
+  const repoRoot = process.cwd();
+  const statusFile = join(repoRoot, "data", "deploy-status.json");
+  const lockFile = join(repoRoot, "data", "deploy.lock");
 
   let lastDeploy: unknown = null;
   try {

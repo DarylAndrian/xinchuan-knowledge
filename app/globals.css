@@ -68,6 +68,12 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .theme-toggle { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: 4px; color: var(--ink-muted); background: transparent; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
 .theme-toggle:hover { color: var(--ink); background: var(--surface); border-color: var(--rule); }
 
+.mobile-site-menu { position: absolute; inset: 52px 0 auto 0; z-index: 60; padding: 10px 12px 14px; border-bottom: 1px solid var(--rule-strong); background: var(--surface-elevated); box-shadow: var(--menu-shadow); }
+.mobile-site-menu a, .mobile-site-menu button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 42px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font: inherit; font-size: 14px; text-align: left; }
+.mobile-site-menu a:hover, .mobile-site-menu button:hover, .mobile-site-menu a.active { background: var(--surface); color: var(--moss); }
+.mobile-site-search { margin: 5px 0; border: 1px solid var(--rule-strong) !important; }
+.mobile-site-version { display: block; padding: 9px 10px 0; color: var(--ink-muted); font-size: 11px; }
+
 .field { margin-bottom: 9px; }
 .field label { font-size: 12px; font-weight: 500; color: var(--ink-muted); display: block; margin-bottom: 3px; }
 .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--rule-strong); border-radius: 4px; padding: 6px 10px; font-size: 13px; font-family: inherit; background: var(--canvas); color: var(--ink); }
@@ -93,10 +99,28 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 
 /* ---------- wiki layout ---------- */
 .wiki-layout { display: grid; grid-template-columns: 240px minmax(0,1fr) 240px; max-width: 1360px; margin: 0 auto; }
-@media (max-width: 1100px) { .wiki-layout { grid-template-columns: 220px minmax(0,1fr); } .wiki-rail { display: none; } }
-@media (max-width: 800px) { .wiki-layout { grid-template-columns: minmax(0,1fr); } .wiki-sidebar { display: none; } }
+@media (max-width: 1100px) {
+  .wiki-layout { grid-template-columns: 220px minmax(0,1fr); }
+  .wiki-rail { grid-column: 2; position: static; max-height: none; border-top: 1px solid var(--rule); border-left: 0; }
+}
+@media (max-width: 800px) {
+  .wiki-layout { grid-template-columns: minmax(0,1fr); }
+  .wiki-layout > .wiki-sidebar { display: none; }
+  .wiki-main { padding: 76px 20px 64px; }
+  .wiki-rail { grid-column: 1; padding: 22px 20px 48px; }
+  .page-title { font-size: 28px; }
+  .page-meta { gap: 10px 14px; }
+}
 
 .wiki-sidebar { border-right: 1px solid var(--rule); padding: 22px 14px; position: sticky; top: 52px; align-self: start; max-height: calc(100vh - 52px); overflow-y: auto; }
+.wiki-mobile-drawer { display: none; }
+@media (max-width: 800px) {
+  .wiki-mobile-drawer { display: block; position: fixed; left: 12px; top: 64px; z-index: 45; }
+  .wiki-mobile-drawer summary { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 11px; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--surface-elevated); color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: var(--menu-shadow); list-style: none; }
+  .wiki-mobile-drawer summary::-webkit-details-marker { display: none; }
+  .wiki-mobile-drawer-panel { position: fixed; left: 0; top: 52px; bottom: 0; width: min(86vw, 320px); padding: 54px 14px 24px; overflow-y: auto; border-right: 1px solid var(--rule-strong); background: var(--surface-elevated); box-shadow: var(--menu-shadow); }
+  .wiki-mobile-drawer[open] summary { z-index: 2; position: relative; color: var(--moss); }
+}
 .sb-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-muted); padding: 6px 10px; display: flex; align-items: center; gap: 6px; }
 .tree a, .tree button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 5px 10px; border-radius: 4px; color: var(--ink-muted); font-size: 13.5px; background: none; border: 0; font-family: inherit; cursor: pointer; }
 .tree a:hover, .tree button:hover { background: var(--surface); color: var(--ink); }
@@ -192,7 +216,19 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .save-state { display: flex; align-items: center; gap: 6px; color: var(--moss); font-weight: 500; }
 .save-state.dirty { color: var(--brass); }
 .admin-layout { display: grid; grid-template-columns: 240px minmax(0,1fr) 264px; max-width: 1360px; margin: 0 auto; }
-@media (max-width: 1100px) { .admin-layout { grid-template-columns: 220px minmax(0,1fr); } .inspector { display: none; } }
+@media (max-width: 1100px) {
+  .admin-layout { grid-template-columns: 220px minmax(0,1fr); }
+  .admin-layout > .inspector { display: block; grid-column: 2; position: static; max-height: none; border-top: 1px solid var(--rule); border-left: 0; }
+}
+@media (max-width: 800px) {
+  .admin-layout { grid-template-columns: minmax(0,1fr); }
+  .admin-layout > .wiki-sidebar { display: block; position: static !important; max-height: 260px !important; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .admin-layout > .inspector { grid-column: 1; }
+  .editor-main { padding: 28px 20px 80px; }
+  .editor-title-input { font-size: 28px; }
+  .editor-toolbar { top: 102px; max-height: 112px; overflow-y: auto; }
+  .editor-topbar { padding-inline: 12px; }
+}
 .editor-main { padding: 34px 56px 120px; min-width: 0; display: flex; flex-direction: column; align-items: center; }
 .editor-col { width: 100%; max-width: 68ch; }
 .editor-title-input { width: 100%; border: 0; outline: none; background: transparent; font-size: 32px; font-weight: 600; letter-spacing: -.02em; font-family: inherit; color: var(--ink); }
@@ -217,6 +253,13 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .inspector { border-left: 1px solid var(--rule); padding: 22px 18px; position: sticky; top: 104px; align-self: start; max-height: calc(100vh - 104px); overflow-y: auto; }
 .inspector h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-muted); margin: 20px 0 8px; }
 .inspector h4:first-child { margin-top: 0; }
+.revision-list { margin-top: 9px; border-top: 1px solid var(--rule); }
+.revision-list > p { padding: 9px 0; color: var(--ink-muted); font-size: 12px; }
+.revision-list > p.revision-error { color: var(--brick); }
+.revision-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.revision-item > div { min-width: 0; display: flex; flex-direction: column; }
+.revision-item b { font-size: 12px; font-weight: 600; }
+.revision-item span, .revision-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); font-size: 11px; }
 
 /* ---------- superadmin ---------- */
 .sa-layout { display: grid; grid-template-columns: 216px minmax(0,1fr); max-width: 1200px; margin: 0 auto; }

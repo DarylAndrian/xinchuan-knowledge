@@ -5,6 +5,7 @@ import CatalogueSidebar from "@/components/CatalogueSidebar";
 import PageReader from "@/components/PageReader";
 import { getSessionUser, isEditor } from "@/lib/auth";
 import { db, getSetting } from "@/lib/db";
+import { sanitizeWikiHtml } from "@/lib/content";
 import { getComments, countThreads } from "@/lib/comments";
 import {
   resolvePath,
@@ -57,7 +58,7 @@ export default async function CataloguePathPage({
       <CatalogueSidebar activeHref={`/catalogue/${path.join("/")}`} user={user} />
 
       <PageReader
-        html={page.content_html}
+        html={sanitizeWikiHtml(page.content_html)}
         pageId={page.id}
         comments={comments}
         canComment={canComment}

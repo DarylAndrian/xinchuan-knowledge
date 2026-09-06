@@ -50,7 +50,7 @@ export default async function SearchPage({
               <div className="min-w-0 flex-1">
                 <b>{p.title}</b>
                 <div className="mt-0.5 text-[13px] text-ink-muted">
-                  {textSnippet(p.content_html, query)}
+                  {p.search_snippet || textSnippet(p.content_html, query)}
                 </div>
               </div>
               <span className="count">

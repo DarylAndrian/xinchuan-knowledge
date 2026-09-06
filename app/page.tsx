@@ -44,7 +44,7 @@ export default function HomePage() {
             </span>
             <b>{c.name}</b>
             <span className="desc">{c.description}</span>
-            <span className="count">{countPages(c.id)} pages</span>
+            <span className="count">{countPages(c.id, true)} pages</span>
           </Link>
         ))}
         {collections.length === 0 && (

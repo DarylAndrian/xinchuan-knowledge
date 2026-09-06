@@ -4,6 +4,7 @@ import "./globals.css";
 import { getSessionUser } from "@/lib/auth";
 import { getSetting } from "@/lib/db";
 import TopBar from "@/components/TopBar";
+import WebMCPTools from "@/components/WebMCPTools";
 import pkg from "@/package.json";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -39,6 +40,7 @@ export default async function RootLayout({
       </head>
       <body className="font-sans">
         <TopBar user={user} siteName={siteName} version={pkg.version} />
+        <WebMCPTools />
         {children}
       </body>
     </html>

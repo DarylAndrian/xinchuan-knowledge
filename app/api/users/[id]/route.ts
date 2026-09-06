@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db, UserRow, Role } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { enforceSameOrigin } from "@/lib/security";
 
 const ROLES: Role[] = ["superadmin", "admin", "commentator"];
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const me = await getSessionUser();
   if (!me || me.role !== "superadmin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -53,7 +56,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   return NextResponse.json(safe);
 }
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   const me = await getSessionUser();
   if (!me || me.role !== "superadmin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await ctx.params;

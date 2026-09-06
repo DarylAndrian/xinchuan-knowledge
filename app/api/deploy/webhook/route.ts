@@ -1,12 +1,12 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { spawn } from "child_process";
 import { existsSync, statSync } from "fs";
-import { resolve } from "path";
+import { join } from "path";
 import { NextRequest } from "next/server";
 
-const repoRoot = resolve(process.cwd());
-const deployScript = resolve(repoRoot, "scripts/auto-deploy.js");
-const lockFile = resolve(repoRoot, "data/deploy.lock");
+const repoRoot = process.cwd();
+const deployScript = join(repoRoot, "scripts", "auto-deploy.js");
+const lockFile = join(repoRoot, "data", "deploy.lock");
 const WEBHOOK_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "";
 const ALLOWED_REPO = "DarylAndrian/xinchuan-knowledge";
 const ALLOWED_BRANCH = "refs/heads/main";

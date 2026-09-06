@@ -92,9 +92,9 @@ export function getRecentPages(limit = 6): Array<PageRow & { collection_slug: st
     .all(limit) as unknown as Array<PageRow & { collection_slug: string; collection_name: string }>;
 }
 
-export function countPages(collectionId: number): number {
+export function countPages(collectionId: number, publishedOnly = false): number {
   const row = db
-    .prepare("SELECT COUNT(*) AS n FROM pages WHERE collection_id = ?")
+    .prepare(`SELECT COUNT(*) AS n FROM pages WHERE collection_id = ?${publishedOnly ? " AND status = 'published'" : ""}`)
     .get(collectionId) as unknown as { n: number };
   return row.n;
 }
@@ -105,22 +105,31 @@ export function firstPublished(): { collection: CollectionRow; page: PageRow } |
   for (const c of collections) {
     const pages = getCollectionPages(c.id);
     const tree = buildTree(pages);
-    const first = tree.find((n) => n.page.status === "published") || tree[0];
+    const first = tree.find((n) => n.page.status === "published");
     if (first) return { collection: c, page: first.page };
   }
   return null;
 }
 
-export function searchPages(q: string): Array<PageRow & { collection_slug: string; collection_name: string }> {
-  const like = `%${q}%`;
+export function searchPages(q: string): Array<PageRow & {
+  collection_slug: string;
+  collection_name: string;
+  search_snippet?: string;
+}> {
+  const terms = q.match(/[\p{L}\p{N}_-]+/gu)?.slice(0, 10) || [];
+  if (terms.length === 0) return [];
+  const match = terms.map((term) => `"${term.replace(/"/g, "")}"*`).join(" AND ");
   return db
     .prepare(
-      `SELECT p.*, c.slug AS collection_slug, c.name AS collection_name
-       FROM pages p JOIN collections c ON c.id = p.collection_id
-       WHERE p.status = 'published' AND (p.title LIKE ? OR p.content_html LIKE ?)
-       ORDER BY p.updated_at DESC LIMIT 30`
+      `SELECT p.*, c.slug AS collection_slug, c.name AS collection_name,
+              snippet(page_search, 2, '', '', ' … ', 28) AS search_snippet
+       FROM page_search
+       JOIN pages p ON p.id = CAST(page_search.page_id AS INTEGER)
+       JOIN collections c ON c.id = p.collection_id
+       WHERE page_search MATCH ? AND p.status = 'published'
+       ORDER BY bm25(page_search, 8.0, 3.0), p.updated_at DESC LIMIT 30`
     )
-    .all(like, like) as unknown as Array<PageRow & { collection_slug: string; collection_name: string }>;
+    .all(match) as unknown as Array<PageRow & { collection_slug: string; collection_name: string; search_snippet?: string }>;
 }
 
 /** Strip tags for search snippets. */
