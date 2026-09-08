@@ -38,6 +38,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [selectedId, setSelectedId] = useState<number | null>(initialPages[0]?.id ?? null);
   const [title, setTitle] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [newCollectionIcon, setNewCollectionIcon] = useState("book");
@@ -141,9 +142,12 @@ export default function EditorShell({ collections: initialCollections, pages: in
       const updated = (await res.json()) as PageRow;
       setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
       if (!slugTouchedRef.current) setSlugInput(updated.slug);
+      setSaveError(null);
       // Another keystroke may have queued a newer save while this one flew.
       setSaveState(pendingSave.current ? "dirty" : "saved");
     } else {
+      const data = await res.json().catch(() => ({}));
+      setSaveError(data.error || "Could not save. Please try again.");
       setSaveState("dirty");
     }
   }
@@ -475,9 +479,15 @@ export default function EditorShell({ collections: initialCollections, pages: in
   return (
     <>
       <div className="editor-topbar">
-        <div className={`save-state ${saveState !== "saved" ? "dirty" : ""}`}>
+        <div className={`save-state ${saveError ? "error" : saveState !== "saved" ? "dirty" : ""}`}>
           <Check size={13} />
-          {saveState === "saved" ? "Saved" : saveState === "saving" ? "Saving…" : "Unsaved changes"}
+          {saveError
+            ? saveError
+            : saveState === "saved"
+              ? "Saved"
+              : saveState === "saving"
+                ? "Saving…"
+                : "Unsaved changes"}
         </div>
         <span style={{ color: "var(--rule)" }}>|</span>
         <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().undo().run()} aria-label="Undo">

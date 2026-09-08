@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-08
+
+### Fixed
+
+- Saving pages behind Cloudflare no longer returns 403 from the same-origin check
+
 ## [1.4.0] - 2026-09-07
 
 ### Added
