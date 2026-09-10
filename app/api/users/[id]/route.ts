@@ -4,7 +4,7 @@ import { db, UserRow, Role } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { enforceSameOrigin } from "@/lib/security";
 
-const ROLES: Role[] = ["superadmin", "admin", "commentator"];
+const ROLES: Role[] = ["superadmin", "admin", "commentator", "guest"];
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const originError = enforceSameOrigin(req);

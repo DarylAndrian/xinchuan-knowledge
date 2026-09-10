@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSetting } from "@/lib/db";
 import { getCollectionPages, hrefForPage, searchPages } from "@/lib/pages";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  if (getSetting("public_viewing", "1") !== "1") {
-    return NextResponse.json({ error: "Public viewing is disabled." }, { status: 403 });
-  }
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const query = (req.nextUrl.searchParams.get("q") || "").trim().slice(0, 200);
   if (!query) return NextResponse.json({ query, results: [] });
   const results = searchPages(query).map((page) => ({

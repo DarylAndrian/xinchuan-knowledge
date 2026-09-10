@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('superadmin','admin','commentator')),
+  role TEXT NOT NULL CHECK (role IN ('superadmin','admin','commentator','guest')),
   suspended INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -89,6 +89,7 @@ function createDb() {
   database.exec("PRAGMA busy_timeout = 10000;");
   database.exec(SCHEMA);
   migrateEmailToUsername(database);
+  migrateGuestRole(database);
   initializeSearch(database);
   initializeRevisions(database);
   return database;
@@ -154,6 +155,47 @@ function rebuildSearchIndex(database: DatabaseSync) {
  * no-op there, so rename in place. Idempotent: only runs while the old
  * column still exists.
  */
+/**
+ * Allow the view-only `guest` role. SQLite cannot ALTER a CHECK constraint,
+ * so existing databases rebuild the users table in place. Idempotent.
+ */
+function migrateGuestRole(database: DatabaseSync) {
+  const row = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'")
+    .get() as unknown as { sql: string } | undefined;
+  if (!row?.sql || row.sql.includes("'guest'")) return;
+
+  database.exec("PRAGMA foreign_keys = OFF");
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(`
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('superadmin','admin','commentator','guest')),
+        suspended INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO users_new (id, username, name, password_hash, role, suspended, created_at)
+        SELECT id, username, name, password_hash, role, suspended, created_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+    `);
+    database.prepare(
+      `INSERT INTO settings (key, value) VALUES ('public_viewing', '0')
+       ON CONFLICT(key) DO UPDATE SET value = '0'`
+    ).run();
+    database.exec("COMMIT");
+  } catch (error) {
+    try { database.exec("ROLLBACK"); } catch { /* no active transaction */ }
+    database.exec("PRAGMA foreign_keys = ON");
+    throw error;
+  }
+  database.exec("PRAGMA foreign_keys = ON");
+}
+
 function migrateEmailToUsername(database: DatabaseSync) {
   const cols = database.prepare("PRAGMA table_info(users)").all() as unknown as { name: string }[];
   const hasEmail = cols.some((c) => c.name === "email");
@@ -195,7 +237,7 @@ export function ensureSeeded(): void {
 
 /* ---------- row types ---------- */
 
-export type Role = "superadmin" | "admin" | "commentator";
+export type Role = "superadmin" | "admin" | "commentator" | "guest";
 
 export interface UserRow {
   id: number;

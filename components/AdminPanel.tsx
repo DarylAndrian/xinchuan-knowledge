@@ -128,7 +128,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [newName, setNewName] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<Role>("commentator");
+  const [newRole, setNewRole] = useState<Role>("guest");
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -157,6 +157,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
     superadmin: users.filter((u) => u.role === "superadmin").length,
     admin: users.filter((u) => u.role === "admin").length,
     commentator: users.filter((u) => u.role === "commentator").length,
+    guest: users.filter((u) => u.role === "guest").length,
   };
 
   function flash(msg: string) {
@@ -203,7 +204,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
     setNewName("");
     setNewUsername("");
     setNewPassword("");
-    setNewRole("commentator");
+    setNewRole("guest");
     flash("User created.");
   }
 
@@ -251,7 +252,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   }
 
   const roleMark = (role: Role) =>
-    role === "superadmin" ? "role-super" : role === "admin" ? "role-admin" : "role-comm";
+    role === "superadmin" ? "role-super" : role === "admin" ? "role-admin" : role === "guest" ? "role-guest" : "role-comm";
 
   const toggleSetting = (key: string) =>
     setSettings((s) => ({ ...s, [key]: s[key] === "1" ? "0" : "1" }));
@@ -296,7 +297,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
           <h2>Users &amp; Roles</h2>
           <p className="sub">
             Create accounts, assign roles and manage access. Superadmins can manage everything,
-            including other superadmins.
+            including other superadmins. Guests can read published pages only.
           </p>
 
           <div className="stat-row">
@@ -304,6 +305,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
             <div className="stat"><div className="n">{counts.superadmin}</div><div className="l">Superadmins</div></div>
             <div className="stat"><div className="n">{counts.admin}</div><div className="l">Admins</div></div>
             <div className="stat"><div className="n">{counts.commentator}</div><div className="l">Commentators</div></div>
+            <div className="stat"><div className="n">{counts.guest}</div><div className="l">Guests</div></div>
           </div>
 
           <table className="users">
@@ -327,6 +329,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                       <option value="superadmin">Superadmin</option>
                       <option value="admin">Admin</option>
                       <option value="commentator">Commentator</option>
+                      <option value="guest">Guest</option>
                     </select>{" "}
                     <span className={`role-mark ${roleMark(u.role)}`}>{u.role}</span>
                   </td>
@@ -357,6 +360,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
               <div className="field">
                 <label>Role</label>
                 <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
+                  <option value="guest">Guest</option>
                   <option value="commentator">Commentator</option>
                   <option value="admin">Admin</option>
                   <option value="superadmin">Superadmin</option>
@@ -370,9 +374,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
         <section id="collections" style={{ marginTop: 48 }}>
           <h2>Collections</h2>
           <p className="sub">
-            Rename collections, edit their description, or change their icon (Lucide — see{" "}
+            Rename collections, edit their description, or change their icon. The Lucide picker includes Food, Taxi, and searchable categories — see{" "}
             <a href="https://lucide.dev/icons" target="_blank" rel="noreferrer" className="text-moss hover:text-moss-hover">lucide.dev/icons</a>
-            {" "}for reference). Deleting a collection also removes all its pages. You can also manage collections from the Editor sidebar.
+            {" "}for the full catalogue. Deleting a collection also removes all its pages. You can also manage collections from the Editor sidebar.
           </p>
 
           <table className="users">
@@ -449,9 +453,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
               <label>Site name</label>
               <input value={settings.site_name} onChange={(e) => setSettings((s) => ({ ...s, site_name: e.target.value }))} />
             </div>
-            <div className="switch-row">
-              Public viewing — anonymous visitors can read published pages
-              <button className={`switch ${settings.public_viewing === "1" ? "" : "off"}`} onClick={() => toggleSetting("public_viewing")} aria-label="Public viewing" />
+            <div className="switch-row" style={{ cursor: "default" }}>
+              Sign-in required — visitors without an account are sent to the login page
+              <button className="switch" disabled aria-label="Sign-in required" title="Always on" />
             </div>
             <div className="switch-row">
               Allow open registration

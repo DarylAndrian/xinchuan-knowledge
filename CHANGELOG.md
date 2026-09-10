@@ -14,6 +14,24 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-10
+
+### Added
+
+- Guest role that can read published pages but cannot comment, open the editor, or open the admin panel
+
+### Changed
+
+- The wiki now requires sign-in; anonymous visitors are redirected to the login page
+
+## [1.5.0] - 2026-09-10
+
+### Added
+
+- Editor toolbar hover labels now include keyboard shortcuts
+- Searchable Lucide icon picker expanded to about 190 icons, with Food and Taxi categories (utensils, car-taxi-front, and related travel/dining icons)
+- Google Docs-style document outline in the catalogue reader: nested H1-H3 headings, scroll highlighting, and a hide/show control that persists
+
 ## [1.4.1] - 2026-09-08
 
 ### Fixed

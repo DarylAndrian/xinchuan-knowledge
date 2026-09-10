@@ -4,7 +4,7 @@ import { db, UserRow, Role } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { enforceSameOrigin } from "@/lib/security";
 
-const ROLES: Role[] = ["superadmin", "admin", "commentator"];
+const ROLES: Role[] = ["superadmin", "admin", "commentator", "guest"];
 
 function isSuperadmin(user: Awaited<ReturnType<typeof getSessionUser>>) {
   return !!user && user.role === "superadmin";

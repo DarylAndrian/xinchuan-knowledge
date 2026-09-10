@@ -1,21 +1,22 @@
 # Xinchuan Knowledge Center
 
-A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Public reading pages, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
+A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Sign-in required to read, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
 
-Current version: **1.4.1** — see [CHANGELOG.md](./CHANGELOG.md).
+Current version: **1.5.1** — see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Features
 
-- **Public reader (Catalogue)** — published pages are readable anonymously (toggleable in settings). Collection sidebar tree, breadcrumbs, generated table of contents, 68ch reading column, and a touch-friendly mobile page drawer.
-- **Anchored comments** — select any text on a page to attach a comment thread to that exact passage. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any.
-- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers — all styled to match the published catalogue page. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, and responsive page/collection management.
+- **Sign-in required** — visiting the site without a session redirects to `/login`. After sign-in, users return to the page they asked for.
+- **Catalogue reader** — signed-in members can read published pages. Collection sidebar tree, breadcrumbs, a Google Docs–style heading outline (H1–H3, hideable, with scroll highlighting), 68ch reading column, and a touch-friendly mobile page drawer.
+- **Anchored comments** — commentators and editors can select any text on a page to attach a comment thread. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any. Guests can read comments but cannot add them.
+- **Admin editor (TipTap)** — headings, bold/italic/strike, bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers — all styled to match the published catalogue page. Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, and responsive page/collection management. Guests and commentators cannot open `/editor`.
 - **Revision history** — content, title, icon, and status snapshots are recorded automatically. Editors can inspect the latest 50 revisions and restore an earlier version; the restore itself creates a new revision so history remains recoverable.
 - **Light and dark themes** — follows the system preference on first visit, supports a persistent manual toggle in the top bar, and themes native controls and editor content consistently.
-- **Roles** — `superadmin` > `admin` > `commentator`. Editors manage content; commentators comment; anonymous visitors read published pages.
-- **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role, suspend, delete with last-superadmin protection); collection management (rename, description, [Lucide](https://lucide.dev/icons) icon picker, delete); and site settings (site name, public viewing, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu.
+- **Roles** — `superadmin` > `admin` > `commentator` > `guest`. Editors manage content; commentators comment; guests may only view published pages; visitors without an account are sent to sign-in.
+- **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role including Guest, suspend, delete with last-superadmin protection); collection management (rename, description, searchable [Lucide](https://lucide.dev/icons) icon picker including Food and Taxi, delete); and site settings (site name, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu. Guests cannot open `/admin`.
 - **Full-text search** — SQLite FTS5 search over published titles and article text, with relevance ranking, prefix matching, and context snippets.
-- **Read-only WebMCP** — compatible agents visiting the public site can search, read a published page, list collections, and inspect recent updates. The tools use the same anonymous published-content boundary as the website and never require a PAT or expose write operations.
-- **Hardened API boundary** — internal bulk/draft APIs require editor roles; dedicated anonymous APIs expose only published content. Rich text is allowlist-sanitized, browser mutations are same-origin checked, sign-in attempts are throttled, session cookies are secure in production, and baseline security headers are enabled. See [SECURITY.md](./SECURITY.md).
+- **Read-only WebMCP** — compatible agents in a signed-in browser session can search, read a published page, list collections, and inspect recent updates. There are no write tools and no PAT.
+- **Hardened API boundary** — pages and `/api/public/*` require a session cookie; authoring APIs require editor roles. Rich text is allowlist-sanitized, browser mutations are same-origin checked, sign-in attempts are throttled, session cookies are secure in production, and baseline security headers are enabled. See [SECURITY.md](./SECURITY.md).
 - **Version badge** — the current app version (from `package.json`) is shown small at the top right of the nav bar.
 
 ## Tech stack
@@ -24,7 +25,7 @@ Current version: **1.4.1** — see [CHANGELOG.md](./CHANGELOG.md).
 | --- | --- |
 | Framework | Next.js 16 (App Router) + TypeScript |
 | Styling | Tailwind CSS + custom flat design system (CSS variables) |
-| Icons | [Lucide](https://lucide.dev/) via `lucide-react` |
+| Icons | [Lucide](https://lucide.dev/) via `lucide-react` (searchable categorized picker, ~190 icons including Food and Taxi) |
 | Editor | [TipTap](https://tiptap.dev/) (StarterKit, links, images, tables, task lists) |
 | Database | SQLite via Node's built-in `node:sqlite` (no native deps), stored at `data/xinchuan.db` |
 | Auth | Hand-rolled cookie sessions + `bcryptjs` |
@@ -36,7 +37,7 @@ Requires **Node.js 22.5+** (uses `node:sqlite`).
 ```bash
 npm install
 npm run dev
-# open http://localhost:3000
+# open http://localhost:3000 — you will be redirected to /login
 ```
 
 The database is created and seeded automatically on first run (users, two collections, sample pages, seeded comment threads).
@@ -55,6 +56,7 @@ npm start
 | Superadmin | `admin` | `xinchuan-admin` |
 | Admin | `editor` | `xinchuan-admin` |
 | Commentator | `mika` | `xinchuan-comment` |
+| Guest | `guest` | `xinchuan-guest` |
 
 Override the superadmin credentials on first seed via `.env.local`:
 
@@ -67,22 +69,23 @@ SUPERADMIN_PASSWORD=your-password
 
 ```
 app/
-  page.tsx                  Home
+  page.tsx                  Home (signed-in)
   login/                    Sign-in form
   search/                   Search results
   catalogue/                Reader index + [...path] page renderer
   editor/                   Admin editor workspace
   admin/                    Superadmin panel (users + collections + settings)
-  api/                      guarded authoring APIs + narrow public read APIs
+  api/                      session-guarded APIs (read tools + authoring)
 components/
   TopBar.tsx                Nav + theme toggle + profile menu + version badge
-  WebMCPTools.tsx           Anonymous, read-only site-tool registrations
+  LoginForm.tsx             Sign-in form
+  WebMCPTools.tsx           Read-only site-tool registrations (signed-in session)
   ThemeToggle.tsx           Persistent light/dark theme control
   CatalogueSidebar.tsx      Collection tree for the reader
-  PageReader.tsx            Article + TOC + anchored comment threads
+  PageReader.tsx            Article + hideable heading outline + anchored comment threads
   EditorShell.tsx           TipTap editor, tree, inspector, autosave, collection editing
   AdminPanel.tsx            Sticky admin nav + users/roles actions + collections + settings
-  Icon.tsx                  Lucide icon lookup by name + IconPicker grid
+  Icon.tsx                  Lucide icon lookup + searchable categorized IconPicker (Food, Taxi, …)
 lib/
   db.ts                     node:sqlite schema, revisions, FTS index, settings helpers
   content.ts                Rich-text sanitization + plain-text extraction
@@ -92,15 +95,16 @@ lib/
   pages.ts / comments.ts    Query helpers
   extensions.ts             Shared TipTap extension set
   images.ts                 Share-link → direct image URL resolver
+proxy.ts                    Login redirect for visitors without a session cookie
 scripts/
   changelog.js              Changelog/release management (see below)
 AGENTS.md                    Version-matched Next.js guidance for coding agents
-SECURITY.md                  Public/private boundary and production checklist
+SECURITY.md                  Sign-in boundary and production checklist
 ```
 
 ## Public API and WebMCP
 
-Anonymous access is intentionally limited to published content:
+These read endpoints require a signed-in session (the same cookie as the website). Anonymous callers receive `401`.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -109,7 +113,7 @@ Anonymous access is intentionally limited to published content:
 | `GET /api/public/collections` | List collections and published page counts |
 | `GET /api/public/recent?limit=10` | List recent published updates (maximum 20) |
 
-The same endpoints power the four JavaScript-registered WebMCP tools. They work only when the site is open in a compatible browser and `public_viewing` is enabled. `/api/pages`, `/api/collections`, `/api/settings`, revisions, and all mutation routes remain session- and role-protected.
+The same endpoints power the four JavaScript-registered WebMCP tools. They work only when the site is open in a compatible browser with an active session. `/api/pages`, `/api/collections`, `/api/settings`, revisions, and all mutation routes remain session- and role-protected. Guests may use the read tools but cannot comment, edit, or open the admin panel.
 
 ## Design system
 

@@ -9,10 +9,12 @@ import {
   hrefForPage,
   timeAgo,
 } from "@/lib/pages";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
+export default async function HomePage() {
+  await requireUser();
   const collections = getCollections();
   const recent = getRecentPages(6);
 

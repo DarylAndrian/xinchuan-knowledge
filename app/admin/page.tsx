@@ -18,7 +18,6 @@ export default async function AdminPage() {
   ).map((c) => ({ ...c }));
   const settings = {
     site_name: getSetting("site_name", "Xinchuan Knowledge Center"),
-    public_viewing: getSetting("public_viewing", "1"),
     open_registration: getSetting("open_registration", "0"),
     comment_approval: getSetting("comment_approval", "0"),
   };

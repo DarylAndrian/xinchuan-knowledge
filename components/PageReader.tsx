@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessageSquarePlus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ListTree, MessageSquarePlus, X } from "lucide-react";
 import type { CommentWithAuthor } from "@/lib/comments";
+
+const OUTLINE_HIDDEN_KEY = "wiki-outline-hidden";
 
 interface Props {
   html: string;
@@ -20,6 +22,52 @@ interface TocItem {
   level: number;
 }
 
+function slugifyHeading(text: string, index: number) {
+  const base = text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-$/g, "")
+    .slice(0, 48);
+  return `${base || "heading"}-${index}`;
+}
+
+function headingPlainText(inner: string) {
+  return inner
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function extractTocFromHtml(html: string): TocItem[] {
+  const items: TocItem[] = [];
+  const used = new Set<string>();
+  const re = /<h([1-3])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi;
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = re.exec(html))) {
+    const text = headingPlainText(match[2]);
+    let id = slugifyHeading(text, index);
+    if (used.has(id)) id = `${id}-${index}`;
+    used.add(id);
+    items.push({ id, text, level: Number(match[1]) });
+    index += 1;
+  }
+  return items;
+}
+
+function jumpToHeading(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  history.replaceState(null, "", `#${id}`);
+}
+
 export default function PageReader({
   html,
   pageId,
@@ -33,7 +81,9 @@ export default function PageReader({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [comments, setComments] = useState(initialComments);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [toc, setToc] = useState<TocItem[]>([]);
+  const [toc, setToc] = useState<TocItem[]>(() => extractTocFromHtml(html));
+  const [activeHeading, setActiveHeading] = useState<string | null>(null);
+  const [outlineHidden, setOutlineHidden] = useState(false);
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
   const pendingRange = useRef<Range | null>(null);
   const [reply, setReply] = useState("");
@@ -53,14 +103,20 @@ export default function PageReader({
     if (!el) return;
     el.innerHTML = html;
 
-    // build TOC
+    const items = extractTocFromHtml(html);
     const headings = Array.from(el.querySelectorAll("h1, h2, h3"));
-    const items: TocItem[] = headings.map((h, i) => {
-      const id = `h-${i}`;
-      h.id = id;
-      return { id, text: h.textContent || "", level: Number(h.tagName[1]) };
+    items.forEach((item, i) => {
+      const heading = headings[i];
+      if (heading) heading.id = item.id;
     });
     setToc(items);
+    setActiveHeading(items[0]?.id ?? null);
+
+    const hash = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    if (hash && items.some((item) => item.id === hash)) {
+      requestAnimationFrame(() => jumpToHeading(hash));
+      setActiveHeading(hash);
+    }
 
     // wrap comment anchors
     let idx = 0;
@@ -71,6 +127,43 @@ export default function PageReader({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html, pageId]);
+
+  useEffect(() => {
+    try {
+      setOutlineHidden(localStorage.getItem(OUTLINE_HIDDEN_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleOutline = useCallback(() => {
+    setOutlineHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(OUTLINE_HIDDEN_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  /* ----- highlight the heading currently in view ----- */
+  useEffect(() => {
+    if (toc.length === 0) return;
+    const onScroll = () => {
+      const offset = 88;
+      let current = toc[0].id;
+      for (const item of toc) {
+        const heading = document.getElementById(item.id);
+        if (heading && heading.getBoundingClientRect().top <= offset) current = item.id;
+      }
+      setActiveHeading(current);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [toc]);
 
   function wrapQuote(container: HTMLElement, quote: string, cid: number, idx: number): boolean {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -243,6 +336,30 @@ export default function PageReader({
       <main className="wiki-main">
         <div className="article">
           {children}
+          {toc.length > 0 && (
+            <div className="article-outline">
+              <button
+                type="button"
+                className="article-outline-toggle"
+                onClick={toggleOutline}
+                aria-expanded={!outlineHidden}
+                aria-controls="article-outline-nav"
+              >
+                <ListTree size={14} />
+                <span>Contents</span>
+                <span className="article-outline-count">{toc.length}</span>
+                {outlineHidden ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {!outlineHidden && (
+                <OutlineNav
+                  id="article-outline-nav"
+                  items={toc}
+                  activeId={activeHeading}
+                  onJump={jumpToHeading}
+                />
+              )}
+            </div>
+          )}
           <div ref={containerRef} className="wiki-content" />
         </div>
       </main>
@@ -251,19 +368,27 @@ export default function PageReader({
         <aside className="wiki-rail">
           {!openThread ? (
             <>
-              <div className="rail-label">On this page</div>
-              <nav className="toc">
-                {toc.map((t) => (
-                  <a
-                    key={t.id}
-                    href={`#${t.id}`}
-                    className={t.level === 3 ? "pl-6" : ""}
-                    style={t.level === 1 ? { fontWeight: 600 } : undefined}
-                  >
-                    {t.text}
-                  </a>
-                ))}
-              </nav>
+              <div className="rail-outline-head">
+                <div className="rail-label" style={{ margin: 0 }}>On this page</div>
+                <button
+                  type="button"
+                  className="outline-hide"
+                  onClick={toggleOutline}
+                  aria-expanded={!outlineHidden}
+                  aria-controls="rail-outline-nav"
+                  title={outlineHidden ? "Show outline" : "Hide outline"}
+                >
+                  {outlineHidden ? "Show" : "Hide"}
+                </button>
+              </div>
+              {!outlineHidden && (
+                <OutlineNav
+                  id="rail-outline-nav"
+                  items={toc}
+                  activeId={activeHeading}
+                  onJump={jumpToHeading}
+                />
+              )}
               <div className="rail-label" style={{ marginTop: 26 }}>
                 Comments · {threads.filter((t) => !t.root.deleted_at).length}
               </div>
@@ -356,4 +481,41 @@ export default function PageReader({
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function OutlineNav({
+  id,
+  items,
+  activeId,
+  onJump,
+}: {
+  id?: string;
+  items: TocItem[];
+  activeId: string | null;
+  onJump: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="outline-empty">
+        No headings on this page. Add Heading 1–3 in the editor to build this outline.
+      </p>
+    );
+  }
+  return (
+    <nav id={id} className="toc doc-outline" aria-label="Document outline">
+      {items.map((t) => (
+        <a
+          key={t.id}
+          href={`#${t.id}`}
+          className={`lvl-${t.level}${activeId === t.id ? " active" : ""}`}
+          onClick={(e) => {
+            e.preventDefault();
+            onJump(t.id);
+          }}
+        >
+          {t.text}
+        </a>
+      ))}
+    </nav>
+  );
 }

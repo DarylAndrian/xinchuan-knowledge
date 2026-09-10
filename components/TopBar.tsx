@@ -24,6 +24,10 @@ export default function TopBar({
 
   const canEdit = !!user && (user.role === "admin" || user.role === "superadmin");
 
+  function roleClass(role: SessionUser["role"]) {
+    return role === "superadmin" ? "role-super" : role === "admin" ? "role-admin" : role === "guest" ? "role-guest" : "role-comm";
+  }
+
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
@@ -39,7 +43,7 @@ export default function TopBar({
 
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
+    router.push("/login");
     router.refresh();
   }
 
@@ -66,19 +70,22 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-50 border-b border-rule bg-canvas">
       <div className="mx-auto flex h-[52px] max-w-[1360px] items-center gap-2 px-3 md:gap-4 md:px-6">
-        <Link href="/" className="flex min-w-0 items-center gap-2 text-[14.5px] font-semibold tracking-tight">
+        <Link href={user ? "/" : "/login"} className="flex min-w-0 items-center gap-2 text-[14.5px] font-semibold tracking-tight">
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded border-[1.5px] border-ink text-[12px] font-bold">
             X
           </span>
           <span className="truncate sm:max-w-[260px]">{siteName}</span>
         </Link>
 
+        {user && (
         <nav className="ml-4 hidden items-center gap-1 md:flex">
           {navLink("/", "Home")}
           {navLink("/catalogue", "Catalogue")}
           {canEdit && navLink("/editor", "Editor")}
         </nav>
+        )}
 
+        {user && (
         <Link
           href="/search"
           className="ml-auto hidden max-w-[300px] flex-1 items-center gap-2 rounded border border-rule-strong px-3 py-[5px] text-[13px] text-ink-muted transition-colors hover:border-moss md:flex"
@@ -87,8 +94,11 @@ export default function TopBar({
           Search…
           <span className="ml-auto rounded border border-rule bg-canvas px-1.5 text-[10.5px]">⌘K</span>
         </Link>
+        )}
 
-        <ThemeToggle />
+        <span className={user ? "" : "ml-auto"}>
+          <ThemeToggle />
+        </span>
 
         {user ? (
           <div className="relative hidden md:block" ref={menuRef}>
@@ -107,7 +117,7 @@ export default function TopBar({
                 <div className="border-b border-rule px-3 pb-2 pt-1">
                   <div className="text-[13px] font-semibold">{user.name}</div>
                   <div className="text-[12px] text-ink-muted">{user.username}</div>
-                  <span className="role-mark role-admin mt-1 inline-block">{user.role}</span>
+                  <span className={`role-mark ${roleClass(user.role)} mt-1 inline-block`}>{user.role}</span>
                 </div>
                 {user.role === "superadmin" && (
                   <Link
@@ -148,11 +158,15 @@ export default function TopBar({
       </div>
       {mobileOpen && (
         <div id="mobile-site-menu" className="mobile-site-menu md:hidden">
-          <Link href="/" className={pathname === "/" ? "active" : ""}>Home</Link>
-          <Link href="/catalogue" className={(pathname ?? "").startsWith("/catalogue") ? "active" : ""}>Catalogue</Link>
-          {canEdit && <Link href="/editor" className={(pathname ?? "").startsWith("/editor") ? "active" : ""}>Editor</Link>}
-          <Link href="/search" className="mobile-site-search"><Search size={15} /> Search the wiki</Link>
-          {user?.role === "superadmin" && <Link href="/admin"><Shield size={15} /> Admin panel</Link>}
+          {user && (
+            <>
+              <Link href="/" className={pathname === "/" ? "active" : ""}>Home</Link>
+              <Link href="/catalogue" className={(pathname ?? "").startsWith("/catalogue") ? "active" : ""}>Catalogue</Link>
+              {canEdit && <Link href="/editor" className={(pathname ?? "").startsWith("/editor") ? "active" : ""}>Editor</Link>}
+              <Link href="/search" className="mobile-site-search"><Search size={15} /> Search the wiki</Link>
+              {user.role === "superadmin" && <Link href="/admin"><Shield size={15} /> Admin panel</Link>}
+            </>
+          )}
           {user ? (
             <button onClick={signOut}><LogOut size={15} /> Sign out · {user.name}</button>
           ) : (

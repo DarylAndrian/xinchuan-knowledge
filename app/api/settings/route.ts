@@ -3,7 +3,7 @@ import { getSetting, setSetting, ensureSeeded } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { enforceSameOrigin } from "@/lib/security";
 
-const KEYS = ["site_name", "public_viewing", "open_registration", "comment_approval"];
+const KEYS = ["site_name", "open_registration", "comment_approval"];
 
 export async function GET() {
   const user = await getSessionUser();
@@ -12,7 +12,7 @@ export async function GET() {
   }
   ensureSeeded();
   const out: Record<string, string> = {};
-  for (const k of KEYS) out[k] = getSetting(k, k === "site_name" ? "Xinchuan Knowledge Center" : k === "public_viewing" ? "1" : "0");
+  for (const k of KEYS) out[k] = getSetting(k, k === "site_name" ? "Xinchuan Knowledge Center" : "0");
   return NextResponse.json(out);
 }
 

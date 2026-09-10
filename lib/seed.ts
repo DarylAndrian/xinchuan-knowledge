@@ -135,6 +135,7 @@ function seedAll(database: DatabaseSync): void {
   const superadminId = Number(insertUser.run(superadminUsername, "Site Admin", hash(superadminPassword), "superadmin").lastInsertRowid);
   const danaId = Number(insertUser.run("editor", "Dana Writer", hash("xinchuan-admin"), "admin").lastInsertRowid);
   const mikaId = Number(insertUser.run("mika", "Mika Reader", hash("xinchuan-comment"), "commentator").lastInsertRowid);
+  insertUser.run("guest", "Guest Reader", hash("xinchuan-guest"), "guest");
 
   const insertCollection = database.prepare(
     "INSERT INTO collections (name, slug, description, icon, position) VALUES (?, ?, ?, ?, ?)"
@@ -165,7 +166,7 @@ function seedAll(database: DatabaseSync): void {
   insertComment.run(checklistId, danaId, c1, "", "Good catch — adding the snapshot requirement in the next revision.", datetime(-2));
   insertComment.run(checklistId, danaId, null, "On-call engineer confirmed and reachable", "“Reachable” means PagerDuty ack within 5 min — let’s spell that out.", datetime(-1));
 
-  database.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('site_name', 'Xinchuan Knowledge Center'), ('public_viewing', '1')").run();
+  database.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('site_name', 'Xinchuan Knowledge Center'), ('public_viewing', '0')").run();
 }
 
 function datetime(daysAgo: number): string {

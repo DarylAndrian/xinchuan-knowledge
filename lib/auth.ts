@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import crypto from "crypto";
 import { db, UserRow, ensureSeeded } from "./db";
 
@@ -54,4 +55,23 @@ export async function destroySession(): Promise<void> {
 
 export function isEditor(user: SessionUser | null): boolean {
   return !!user && (user.role === "admin" || user.role === "superadmin");
+}
+
+/** Commentators and editors may start or reply to comment threads. Guests cannot. */
+export function canComment(user: SessionUser | null): boolean {
+  return !!user && (user.role === "commentator" || user.role === "admin" || user.role === "superadmin");
+}
+
+/** Relative in-app paths only (blocks open redirects). */
+export function safeInternalPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
+  if (raw.startsWith("/login")) return null;
+  return raw;
+}
+
+export async function requireUser(): Promise<SessionUser> {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  return user;
 }

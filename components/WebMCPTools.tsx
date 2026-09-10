@@ -35,7 +35,7 @@ export default function WebMCPTools() {
     const tools: ToolDefinition[] = [
       {
         name: "search_xinchuan_wiki",
-        description: "Search the publicly published Xinchuan wiki and return matching pages.",
+        description: "Search published Xinchuan wiki pages (requires a signed-in session).",
         inputSchema: {
           type: "object",
           properties: { query: { type: "string", minLength: 1, maxLength: 200 } },
@@ -47,7 +47,7 @@ export default function WebMCPTools() {
       },
       {
         name: "read_xinchuan_page",
-        description: "Read the plain-text content of one publicly published Xinchuan wiki page by ID.",
+        description: "Read the plain-text content of one published Xinchuan wiki page by ID (requires a signed-in session).",
         inputSchema: {
           type: "object",
           properties: { page_id: { type: "integer", minimum: 1 } },
@@ -59,14 +59,14 @@ export default function WebMCPTools() {
       },
       {
         name: "list_xinchuan_collections",
-        description: "List public Xinchuan wiki collections and their published page counts.",
+        description: "List Xinchuan wiki collections and their published page counts (requires a signed-in session).",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true },
         execute: async () => getJson("/api/public/collections"),
       },
       {
         name: "recent_xinchuan_updates",
-        description: "List recently updated public Xinchuan wiki pages.",
+        description: "List recently updated published Xinchuan wiki pages (requires a signed-in session).",
         inputSchema: {
           type: "object",
           properties: { limit: { type: "integer", minimum: 1, maximum: 20, default: 10 } },

@@ -3,8 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import CatalogueSidebar from "@/components/CatalogueSidebar";
 import PageReader from "@/components/PageReader";
-import { getSessionUser, isEditor } from "@/lib/auth";
-import { db, getSetting } from "@/lib/db";
+import { isEditor, canComment, requireUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { sanitizeWikiHtml } from "@/lib/content";
 import { getComments, countThreads } from "@/lib/comments";
 import {
@@ -22,10 +22,8 @@ export default async function CataloguePathPage({
   params: Promise<{ path: string[] }>;
 }) {
   const { path } = await params;
-  const user = await getSessionUser();
+  const user = await requireUser();
   const editor = isEditor(user);
-  const publicViewing = getSetting("public_viewing", "1") === "1";
-  if (!publicViewing && !user) redirect("/login");
 
   // /catalogue/<collection> → jump to first page of that collection
   if (path.length === 1) {
@@ -50,7 +48,7 @@ export default async function CataloguePathPage({
     ? ((db.prepare("SELECT name FROM users WHERE id = ?").get(page.updated_by) as { name: string } | undefined)?.name ?? "—")
     : "—";
 
-  const canComment = !!user; // commentator and above
+  const canLeaveComments = canComment(user);
   const canModerate = editor;
 
   return (
@@ -61,7 +59,7 @@ export default async function CataloguePathPage({
         html={sanitizeWikiHtml(page.content_html)}
         pageId={page.id}
         comments={comments}
-        canComment={canComment}
+        canComment={canLeaveComments}
         canModerate={canModerate}
         currentUserId={user?.id ?? null}
       >

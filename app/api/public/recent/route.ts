@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSetting } from "@/lib/db";
 import { getCollectionPages, getRecentPages, hrefForPage } from "@/lib/pages";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  if (getSetting("public_viewing", "1") !== "1") {
-    return NextResponse.json({ error: "Public viewing is disabled." }, { status: 403 });
-  }
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const requested = Number(req.nextUrl.searchParams.get("limit") || 10);
   const limit = Number.isFinite(requested) ? Math.min(20, Math.max(1, Math.floor(requested))) : 10;
   const pages = getRecentPages(limit).map((page) => ({

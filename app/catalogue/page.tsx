@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { firstPublished } from "@/lib/pages";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default function CatalogueIndex() {
+export default async function CatalogueIndex() {
+  await requireUser();
   const first = firstPublished();
   if (first) {
     redirect(`/catalogue/${first.collection.slug}/${first.page.slug}`);

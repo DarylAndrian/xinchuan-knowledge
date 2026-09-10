@@ -22,6 +22,16 @@ interface Props {
 }
 
 type SaveState = "saved" | "dirty" | "saving";
+
+function isApplePlatform() {
+  if (typeof navigator === "undefined") return false;
+  return /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
+}
+
+function editorHint(label: string, combo?: string, mod = "Ctrl") {
+  return combo ? `${mod}+${combo} = ${label}` : label;
+}
+
 type RevisionSummary = {
   id: number;
   page_id: number;
@@ -65,6 +75,11 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const editorRef = useRef<Editor | null>(null);
   const slugTouchedRef = useRef(false);
   const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
+  const [modKey, setModKey] = useState("Ctrl");
+
+  useEffect(() => {
+    if (isApplePlatform()) setModKey("Cmd");
+  }, []);
 
   const selected = pages.find((p) => p.id === selectedId) || null;
 
@@ -458,23 +473,29 @@ export default function EditorShell({ collections: initialCollections, pages: in
     ? pages.filter((p) => p.collection_id === selected.collection_id && p.id !== selected.id)
     : [];
 
+  const hint = (label: string, combo?: string) => editorHint(label, combo, modKey);
+
   const toolbarBtn = (
     onClick: () => void,
     active: boolean,
     icon: React.ReactNode,
-    label: string
-  ) => (
-    <button
-      type="button"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={active ? "is-active" : ""}
-      title={label}
-      aria-label={label}
-    >
-      {icon}
-    </button>
-  );
+    label: string,
+    shortcut?: string
+  ) => {
+    const title = hint(label, shortcut);
+    return (
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className={active ? "is-active" : ""}
+        title={title}
+        aria-label={title}
+      >
+        {icon}
+      </button>
+    );
+  };
 
   return (
     <>
@@ -490,10 +511,10 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 : "Unsaved changes"}
         </div>
         <span style={{ color: "var(--rule)" }}>|</span>
-        <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().undo().run()} aria-label="Undo">
+        <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().undo().run()} title={hint("Undo", "Z")} aria-label={hint("Undo", "Z")}>
           <Undo2 size={13} />
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().redo().run()} aria-label="Redo">
+        <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().redo().run()} title={hint("Redo", "Shift+Z")} aria-label={hint("Redo", "Shift+Z")}>
           <Redo2 size={13} />
         </button>
         <span style={{ marginLeft: "auto" }}>
@@ -676,20 +697,20 @@ export default function EditorShell({ collections: initialCollections, pages: in
               </div>
 
               <div className="editor-toolbar">
-                {toolbarBtn(() => editor.chain().focus().toggleBold().run(), editor.isActive("bold"), <Bold size={14} />, "Bold")}
-                {toolbarBtn(() => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"), <Italic size={14} />, "Italic")}
-                {toolbarBtn(() => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"), <Strikethrough size={14} />, "Strikethrough")}
+                {toolbarBtn(() => editor.chain().focus().toggleBold().run(), editor.isActive("bold"), <Bold size={14} />, "Bold", "B")}
+                {toolbarBtn(() => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"), <Italic size={14} />, "Italic", "I")}
+                {toolbarBtn(() => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"), <Strikethrough size={14} />, "Strikethrough", "Shift+S")}
                 <span className="sep" />
-                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }), <Heading1 size={14} />, "Heading 1")}
-                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), <Heading2 size={14} />, "Heading 2")}
-                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }), <Heading3 size={14} />, "Heading 3")}
+                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }), <Heading1 size={14} />, "Heading 1", "Alt+1")}
+                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), <Heading2 size={14} />, "Heading 2", "Alt+2")}
+                {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }), <Heading3 size={14} />, "Heading 3", "Alt+3")}
                 <span className="sep" />
-                {toolbarBtn(() => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"), <List size={14} />, "Bullet list")}
-                {toolbarBtn(() => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"), <ListOrdered size={14} />, "Numbered list")}
-                {toolbarBtn(() => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"), <ListChecks size={14} />, "To-do list")}
+                {toolbarBtn(() => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"), <List size={14} />, "Bullet list", "Shift+8")}
+                {toolbarBtn(() => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"), <ListOrdered size={14} />, "Numbered list", "Shift+7")}
+                {toolbarBtn(() => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"), <ListChecks size={14} />, "To-do list", "Shift+9")}
                 <span className="sep" />
-                {toolbarBtn(() => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"), <TextQuote size={14} />, "Callout / quote")}
-                {toolbarBtn(() => editor.chain().focus().toggleCodeBlock().run(), editor.isActive("codeBlock"), <CodeXml size={14} />, "Code block")}
+                {toolbarBtn(() => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"), <TextQuote size={14} />, "Callout / quote", "Shift+B")}
+                {toolbarBtn(() => editor.chain().focus().toggleCodeBlock().run(), editor.isActive("codeBlock"), <CodeXml size={14} />, "Code block", "Alt+C")}
                 {toolbarBtn(
                   () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
                   editor.isActive("table"),

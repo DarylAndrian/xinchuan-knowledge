@@ -2,13 +2,22 @@
 
 ## Supported version
 
-Security fixes are applied to the latest release, currently **1.4.x**.
+Security fixes are applied to the latest release, currently **1.5.x**.
 
 ## Access model
 
-The wiki is public by design: anonymous visitors may read published pages when `public_viewing` is enabled. Drafts, revision history, user data, settings, bulk content APIs, and every write operation require an authenticated role. The `/api/public/*` routes are the only intended anonymous content API and return a deliberately small, read-only representation.
+The wiki requires a signed-in account. Visitors without a session cookie are redirected to `/login` (HTML) or receive `401` (APIs). `/login`, `/api/auth/login`, `/api/auth/logout`, and `/api/deploy/*` are the only unauthenticated routes.
 
-WebMCP exposes only the published-content operations backed by those public routes. There are no WebMCP write tools and no PAT or session token is requested from an agent.
+Roles, from most to least privileged:
+
+- **superadmin** — users, collections, settings, editor
+- **admin** — editor; cannot open the superadmin panel
+- **commentator** — read published pages and leave comments
+- **guest** — read published pages only; cannot comment, open `/editor`, or open `/admin`
+
+Drafts, revision history, user data, settings, bulk content APIs, and every write operation still require the matching role. `/api/public/*` returns a small read-only representation of published content and also requires a session.
+
+WebMCP exposes only those published-content operations. There are no WebMCP write tools and no PAT is requested from an agent.
 
 ## Production checklist
 

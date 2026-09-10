@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FileText, Search } from "lucide-react";
 import { searchPages, textSnippet, getCollectionPages, hrefForPage, timeAgo } from "@/lib/pages";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q } = await searchParams;
+  await requireUser();
   const query = (q || "").trim();
   const results = query ? searchPages(query) : [];
 

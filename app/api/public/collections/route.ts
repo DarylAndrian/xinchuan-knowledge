@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { db, getSetting } from "@/lib/db";
+import { db } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 export async function GET() {
-  if (getSetting("public_viewing", "1") !== "1") {
-    return NextResponse.json({ error: "Public viewing is disabled." }, { status: 403 });
-  }
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const collections = db.prepare(`SELECT c.id, c.name, c.slug, c.description, c.icon,
     COUNT(p.id) AS page_count
     FROM collections c
