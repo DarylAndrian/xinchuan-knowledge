@@ -211,6 +211,8 @@ if (!acquireLock()) {
   process.exit(0);
 }
 
+let commitMessage = ""; // hoisted: the catch block references it even if
+                        // git fetch/reset throws before it is assigned
 try {
   // 1. Sync to remote. fetch + reset --hard (NOT git pull): this is a
   //    deploy-only machine — the tree must always mirror origin/main exactly.
@@ -221,10 +223,13 @@ try {
   sh("git fetch", "git fetch origin main", { timeout: 120_000 });
   sh("git reset", "git reset --hard origin/main");
   const postCommit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
+  // Capture the subject line of the newly deployed commit so the status file
+  // (and Telegram alerts) can show what actually shipped, not just a hash.
+  commitMessage = spawnSync("git", ["log", "-1", "--pretty=%s", postCommit], { cwd: REPO, encoding: "utf8", windowsHide: true }).stdout.trim();
 
   if (preCommit === postCommit) {
     log("[skip] no new commits — skipping build");
-    writeStatus("noop", { ...meta, commit: preCommit });
+    writeStatus("noop", { ...meta, commit: preCommit, commitMessage });
     releaseLock();
     process.exit(0);
   }
@@ -243,7 +248,7 @@ try {
   sh("npm build", "npm run build", { timeout: 300_000, env: productionEnv() });
 
   // 4. Spawn finisher (detached — survives the pm2 restart below)
-  const finisher = spawn(process.execPath, [__filename, "--finish", JSON.stringify({ ...meta, commit: postCommit })], {
+  const finisher = spawn(process.execPath, [__filename, "--finish", JSON.stringify({ ...meta, commit: postCommit, commitMessage })], {
     cwd: REPO,
     detached: true,
     stdio: "ignore",
@@ -257,7 +262,7 @@ try {
   sh("pm2 restart", "pm2 restart xinchuan");
 } catch (e) {
   log(`[deploy] ERROR: ${e.message}`);
-  writeStatus("failed", { ...meta, error: e.message });
+  writeStatus("failed", { ...meta, commitMessage, error: e.message });
   releaseLock();
   process.exit(1);
 }
