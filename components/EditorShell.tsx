@@ -8,7 +8,8 @@ import {
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
   History, RotateCcw,
-  Rows3, Columns3, PaintBucket, SquareDashed,
+  ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
+  ListMinus, PaintBucket, SquareDashed,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -799,14 +800,21 @@ export default function EditorShell({ collections: initialCollections, pages: in
 
               {tableUi.active && (
                 <div className="table-toolbar" role="toolbar" aria-label="Table tools">
-                  {toolbarBtn(() => editor.chain().focus().addRowBefore().run(), false, <Rows3 size={13} />, "Add row above")}
-                  {toolbarBtn(() => editor.chain().focus().addRowAfter().run(), false, <Rows3 size={13} />, "Add row below")}
-                  {toolbarBtn(() => editor.chain().focus().addColumnBefore().run(), false, <Columns3 size={13} />, "Add column left")}
-                  {toolbarBtn(() => editor.chain().focus().addColumnAfter().run(), false, <Columns3 size={13} />, "Add column right")}
+                  {toolbarBtn(() => editor.chain().focus().addRowBefore().run(), false, <ArrowUpFromLine size={14} />, "Add row above")}
+                  {toolbarBtn(() => editor.chain().focus().addRowAfter().run(), false, <ArrowDownFromLine size={14} />, "Add row below")}
+                  {toolbarBtn(() => editor.chain().focus().addColumnBefore().run(), false, <ArrowLeftFromLine size={14} />, "Add column left")}
+                  {toolbarBtn(() => editor.chain().focus().addColumnAfter().run(), false, <ArrowRightFromLine size={14} />, "Add column right")}
                   <span className="sep" />
-                  {toolbarBtn(() => editor.chain().focus().deleteRow().run(), false, <Minus size={13} />, "Delete row", undefined, !tableUi.canDelRow)}
-                  {toolbarBtn(() => editor.chain().focus().deleteColumn().run(), false, <Minus size={13} />, "Delete column", undefined, !tableUi.canDelCol)}
-                  {toolbarBtn(deleteTableSafe, false, <Trash2 size={13} />, "Delete table")}
+                  {toolbarBtn(() => editor.chain().focus().deleteRow().run(), false, <ListMinus size={14} />, "Delete row", undefined, !tableUi.canDelRow)}
+                  {toolbarBtn(
+                    () => editor.chain().focus().deleteColumn().run(),
+                    false,
+                    <span className="table-icon-rotate" aria-hidden><ListMinus size={14} /></span>,
+                    "Delete column",
+                    undefined,
+                    !tableUi.canDelCol
+                  )}
+                  {toolbarBtn(deleteTableSafe, false, <Trash2 size={14} />, "Delete table")}
                   <span className="sep" />
                   <span className="table-toolbar-label">
                     <PaintBucket size={12} /> Fill

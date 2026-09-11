@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-09-11
+
+### Changed
+
+- Table toolbar icons: directional arrows for insert row/column, clearer row vs column delete
+
 ## [1.5.2] - 2026-09-11
 
 ### Added

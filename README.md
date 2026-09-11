@@ -2,7 +2,7 @@
 
 A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Sign-in required to read, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
 
-Current version: **1.5.2** — see [CHANGELOG.md](./CHANGELOG.md).
+Current version: **1.5.3** — see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Features
 
