@@ -14,6 +14,14 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-11
+
+### Added
+
+- Font color in the editor: paper-and-moss palette plus custom color, with a Baseline toolbar control
+
+## [1.7.0] - 2026-09-11
+
 ### Added
 
 - Brand mark and favicons: open book with outlined inkwell and tilted brass quill in the top bar, plus `icon.svg`, `favicon.ico`, and `apple-icon.png`

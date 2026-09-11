@@ -9,7 +9,7 @@ import {
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
   History, RotateCcw,
   ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
-  ListMinus, PaintBucket, SquareDashed,
+  ListMinus, PaintBucket, SquareDashed, Baseline,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -85,6 +85,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const slugTouchedRef = useRef(false);
   const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
   const [modKey, setModKey] = useState("Ctrl");
+  const [showFontColor, setShowFontColor] = useState(false);
+  const [fontColor, setFontColor] = useState("#A6483A");
+  const fontColorRef = useRef<HTMLDivElement | null>(null);
   const [tableUi, setTableUi] = useState({
     active: false,
     canDelRow: false,
@@ -259,6 +262,22 @@ export default function EditorShell({ collections: initialCollections, pages: in
       document.removeEventListener("keydown", onKey);
     };
   }, [openMenuId]);
+
+  useEffect(() => {
+    if (!showFontColor) return;
+    function onDown(e: MouseEvent) {
+      if (fontColorRef.current && !fontColorRef.current.contains(e.target as Node)) setShowFontColor(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowFontColor(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showFontColor]);
 
   /* ----- actions ----- */
   async function createPage(collectionId: number, parentId: number | null) {
@@ -572,6 +591,24 @@ export default function EditorShell({ collections: initialCollections, pages: in
     refreshTableUi();
   }
 
+  const FONT_SWATCHES: { id: string; label: string; color: string | null; ink?: string }[] = [
+    { id: "default", label: "Default", color: null },
+    { id: "moss", label: "Moss", color: "#4B5D45" },
+    { id: "brass", label: "Brass", color: "#B8863B" },
+    { id: "brick", label: "Brick", color: "#A6483A" },
+    { id: "muted", label: "Muted", color: "#5C6156" },
+    { id: "cream", label: "Cream", color: "#F8F7F2", ink: "#23281F" },
+  ];
+
+  function applyFontColor(color: string | null) {
+    if (!editor) return;
+    const chain = editor.chain().focus();
+    if (!color) chain.unsetMark("textColor");
+    else chain.setMark("textColor", { color });
+    chain.run();
+    setShowFontColor(false);
+  }
+
   return (
     <>
       <div className="editor-topbar">
@@ -775,6 +812,48 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {toolbarBtn(() => editor.chain().focus().toggleBold().run(), editor.isActive("bold"), <Bold size={14} />, "Bold", "B")}
                 {toolbarBtn(() => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"), <Italic size={14} />, "Italic", "I")}
                 {toolbarBtn(() => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"), <Strikethrough size={14} />, "Strikethrough", "Shift+S")}
+                <div className="font-color-wrap" ref={fontColorRef}>
+                  {toolbarBtn(
+                    () => setShowFontColor((v) => !v),
+                    editor.isActive("textColor") || showFontColor,
+                    <span className="font-color-btn" style={{ ["--font-color" as string]: editor.isActive("textColor") ? (editor.getAttributes("textColor").color as string) || "#A6483A" : fontColor }}>
+                      <Baseline size={14} />
+                    </span>,
+                    "Font color"
+                  )}
+                  {showFontColor && (
+                    <div className="font-color-menu" role="listbox" aria-label="Font color">
+                      {FONT_SWATCHES.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          role="option"
+                          title={s.label}
+                          aria-label={s.label}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applyFontColor(s.color)}
+                          style={{
+                            background: s.color ?? "transparent",
+                            color: s.ink || (s.color ? "#fff" : "var(--ink-muted)"),
+                          }}
+                        >
+                          A
+                        </button>
+                      ))}
+                      <input
+                        type="color"
+                        className="table-color-input"
+                        title="Custom font color"
+                        aria-label="Custom font color"
+                        value={fontColor}
+                        onChange={(e) => {
+                          setFontColor(e.target.value);
+                          applyFontColor(e.target.value);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
                 <span className="sep" />
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }), <Heading1 size={14} />, "Heading 1", "Alt+1")}
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), <Heading2 size={14} />, "Heading 2", "Alt+2")}

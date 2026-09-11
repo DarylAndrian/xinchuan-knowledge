@@ -13,8 +13,9 @@ const ALLOWED_TAGS = [
 ];
 
 const CELL_STYLE_KEYS = new Set(["background-color"]);
+const SPAN_STYLE_KEYS = new Set(["color"]);
 
-function sanitizeCellStyle(style: string | undefined): string | undefined {
+function filterStyle(style: string | undefined, allowed: Set<string>): string | undefined {
   if (!style) return undefined;
   const kept: string[] = [];
   for (const declaration of style.split(";")) {
@@ -22,8 +23,8 @@ function sanitizeCellStyle(style: string | undefined): string | undefined {
     if (!rawProp || rest.length === 0) continue;
     const prop = rawProp.trim().toLowerCase();
     const value = rest.join(":").trim();
-    if (!CELL_STYLE_KEYS.has(prop)) continue;
-    if (prop === "background-color" && !isSafeBackgroundColor(value)) continue;
+    if (!allowed.has(prop)) continue;
+    if ((prop === "background-color" || prop === "color") && !isSafeBackgroundColor(value)) continue;
     kept.push(`${prop}: ${value}`);
   }
   return kept.length ? kept.join("; ") : undefined;
@@ -35,10 +36,32 @@ function sanitizeCellAttrs(attribs: Record<string, string>) {
   if (bg && isSafeBackgroundColor(bg)) {
     next.style = `background-color: ${bg}`;
   } else {
-    const style = sanitizeCellStyle(next.style);
+    const style = filterStyle(next.style, CELL_STYLE_KEYS);
     if (style) next.style = style;
     else delete next.style;
     if (!isSafeBackgroundColor(bg ?? "")) delete next["data-background-color"];
+  }
+  return next;
+}
+
+function sanitizeSpanAttrs(attribs: Record<string, string>) {
+  const next: Record<string, string> = { ...attribs };
+  const color = next["data-text-color"]?.trim();
+  if (color && isSafeBackgroundColor(color)) {
+    next.style = `color: ${color}`;
+    next["data-text-color"] = color;
+  } else {
+    const style = filterStyle(next.style, SPAN_STYLE_KEYS);
+    if (style) {
+      next.style = style;
+      const match = style.match(/color\s*:\s*([^;]+)/i);
+      const fromStyle = match?.[1]?.trim();
+      if (fromStyle && isSafeBackgroundColor(fromStyle)) next["data-text-color"] = fromStyle;
+      else delete next["data-text-color"];
+    } else {
+      delete next.style;
+      delete next["data-text-color"];
+    }
   }
   return next;
 }
@@ -57,7 +80,7 @@ export function sanitizeWikiHtml(html: string): string {
       th: ["colspan", "rowspan", "style", "data-background-color"],
       td: ["colspan", "rowspan", "style", "data-background-color"],
       code: ["class"],
-      span: ["data-type"],
+      span: ["data-type", "data-text-color", "style"],
       div: ["data-type"],
     },
     allowedSchemes: ["http", "https", "mailto"],
@@ -80,6 +103,7 @@ export function sanitizeWikiHtml(html: string): string {
       }),
       th: (_tagName, attribs) => ({ tagName: "th", attribs: sanitizeCellAttrs(attribs) }),
       td: (_tagName, attribs) => ({ tagName: "td", attribs: sanitizeCellAttrs(attribs) }),
+      span: (_tagName, attribs) => ({ tagName: "span", attribs: sanitizeSpanAttrs(attribs) }),
     },
     enforceHtmlBoundary: true,
   });

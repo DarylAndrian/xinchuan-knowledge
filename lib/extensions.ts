@@ -8,7 +8,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import type { Extensions } from "@tiptap/core";
+import { Mark, mergeAttributes, type Extensions } from "@tiptap/core";
 import { isSafeBackgroundColor } from "./content";
 
 /** Parse a safe CSS color from inline style or data attribute. */
@@ -54,6 +54,51 @@ const TableHeaderWithColor = TableHeader.extend({
   },
 });
 
+/** Inline font color mark — span[data-text-color] with a safe color style. */
+export const TextColor = Mark.create({
+  name: "textColor",
+
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const fromData = element.getAttribute("data-text-color")?.trim();
+          if (fromData && isSafeBackgroundColor(fromData)) return fromData;
+          const style = element.getAttribute("style") || "";
+          const match = style.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i);
+          const value = match?.[1]?.trim();
+          return value && isSafeBackgroundColor(value) ? value : null;
+        },
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const value = attributes.color;
+          if (typeof value !== "string" || !value || !isSafeBackgroundColor(value)) return {};
+          return {
+            "data-text-color": value,
+            style: `color: ${value}`,
+          };
+        },
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-text-color]",
+        getAttrs: (el) => {
+          const value = (el as HTMLElement).getAttribute("data-text-color");
+          return value && isSafeBackgroundColor(value) ? { color: value } : false;
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["span", mergeAttributes(HTMLAttributes, { "data-text-color": HTMLAttributes.color || "" }), 0];
+  },
+});
+
 export const editorExtensions: Extensions = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3] },
@@ -66,6 +111,7 @@ export const editorExtensions: Extensions = [
     HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" },
   }),
   Image.configure({ inline: false, allowBase64: false }),
+  TextColor,
   Table.configure({ resizable: false }),
   TableRow,
   TableHeaderWithColor,
