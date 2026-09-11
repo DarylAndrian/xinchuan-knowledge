@@ -77,6 +77,18 @@ CREATE TABLE IF NOT EXISTS page_revisions (
 
 CREATE INDEX IF NOT EXISTS idx_page_revisions_page_created
   ON page_revisions(page_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS access_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  token_prefix TEXT NOT NULL,
+  scopes TEXT NOT NULL,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at INTEGER
+);
 `;
 
 const DATA_DIR = path.join(process.cwd(), "data");

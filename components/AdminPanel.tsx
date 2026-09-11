@@ -2,16 +2,32 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, CircleCheck, MoreHorizontal, Users, Settings, Trash2, ScrollText, Plus, Library, Pencil } from "lucide-react";
+import { Ban, CircleCheck, MoreHorizontal, Users, Settings, Trash2, ScrollText, Plus, Library, Pencil, KeyRound, Copy, Check } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import type { UserRow, Role, CollectionRow } from "@/lib/db";
+import type { AccessTokenPublic, Scope } from "@/lib/tokens";
 
 interface Props {
   users: UserRow[];
   collections: CollectionRow[];
   settings: Record<string, string>;
   currentUserId: number;
+  initialTokens?: AccessTokenPublic[];
 }
+
+const SCOPE_LABELS: Record<Scope, string> = {
+  "read:content": "Read published content (search, pages, collections)",
+  "write:content": "Create, update, and delete pages; create collections",
+  "read:comments": "Read comment threads",
+  "write:comments": "Add and delete comments",
+  "read:revisions": "List and restore page revisions",
+  "read:drafts": "Include draft pages in reads",
+  "admin:collections": "Rename/update and delete collections",
+  "admin:users": "Manage users and roles",
+  "admin:settings": "Read and update site settings",
+};
+
+const ALL_SCOPE_KEYS = Object.keys(SCOPE_LABELS) as Scope[];
 
 type SafeUser = Omit<UserRow, "password_hash">;
 
@@ -114,7 +130,7 @@ function UserActionMenu({
   );
 }
 
-export default function AdminPanel({ users: initialUsers, collections: initialCollections, settings: initialSettings, currentUserId }: Props) {
+export default function AdminPanel({ users: initialUsers, collections: initialCollections, settings: initialSettings, currentUserId, initialTokens = [] }: Props) {
   const router = useRouter();
   const [users, setUsers] = useState<SafeUser[]>(
     initialUsers.map(({ password_hash, ...rest }) => rest)
@@ -135,6 +151,21 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [editDescription, setEditDescription] = useState("");
   const [editIcon, setEditIcon] = useState("book");
 
+  const [tokens, setTokens] = useState<AccessTokenPublic[]>(initialTokens);
+  const [tokenName, setTokenName] = useState("Agent access");
+  const [tokenScopes, setTokenScopes] = useState<Scope[]>([
+    "read:content",
+    "write:content",
+    "read:comments",
+    "write:comments",
+    "read:revisions",
+    "read:drafts",
+  ]);
+  const [tokenExpiry, setTokenExpiry] = useState<"0" | "30" | "90" | "365">("0");
+  const [mintedToken, setMintedToken] = useState<string | null>(null);
+  const [mintedTokenId, setMintedTokenId] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -145,7 +176,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
       },
       { rootMargin: "-72px 0px -65% 0px", threshold: [0, 0.1, 0.25] }
     );
-    const sections = ["users", "collections", "settings"]
+    const sections = ["users", "collections", "tokens", "settings"]
       .map((id) => document.getElementById(id))
       .filter((section): section is HTMLElement => !!section);
     sections.forEach((section) => observer.observe(section));
@@ -257,6 +288,67 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const toggleSetting = (key: string) =>
     setSettings((s) => ({ ...s, [key]: s[key] === "1" ? "0" : "1" }));
 
+  function toggleTokenScope(scope: Scope) {
+    setTokenScopes((current) =>
+      current.includes(scope) ? current.filter((s) => s !== scope) : [...current, scope]
+    );
+  }
+
+  async function createToken(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch("/api/tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: tokenName,
+        scopes: tokenScopes,
+        expires_in_days: tokenExpiry === "0" ? null : Number(tokenExpiry),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return flashError(data.error || "Could not create token.");
+    setMintedToken(data.token);
+    setMintedTokenId(data.id);
+    setCopied(false);
+    setTokens((ts) => [
+      {
+        id: data.id,
+        name: data.name,
+        token_prefix: data.token_prefix,
+        scopes: data.scopes,
+        last_used_at: data.last_used_at,
+        created_at: data.created_at,
+        expires_at: data.expires_at,
+      },
+      ...ts,
+    ]);
+    flash("Token created — copy it now.");
+  }
+
+  async function revokeToken(token: AccessTokenPublic) {
+    if (!confirm(`Revoke token “${token.name}” (${token.token_prefix}…)? Agents using it will lose access.`)) return;
+    const res = await fetch(`/api/tokens/${token.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return flashError(data.error || "Revoke failed.");
+    setTokens((ts) => ts.filter((t) => t.id !== token.id));
+    if (mintedTokenId === token.id) {
+      setMintedToken(null);
+      setMintedTokenId(null);
+    }
+    flash("Token revoked.");
+  }
+
+  async function copyMintedToken() {
+    if (!mintedToken) return;
+    try {
+      await navigator.clipboard.writeText(mintedToken);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      flashError("Could not copy — select the token and copy manually.");
+    }
+  }
+
   return (
     <div className="sa-layout">
       <aside className="sa-nav">
@@ -276,6 +368,14 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
           onClick={() => setActiveSection("collections")}
         >
           <Library size={14} /> Collections
+        </a>
+        <a
+          href="#tokens"
+          className={activeSection === "tokens" ? "active" : undefined}
+          aria-current={activeSection === "tokens" ? "location" : undefined}
+          onClick={() => setActiveSection("tokens")}
+        >
+          <KeyRound size={14} /> Access Tokens
         </a>
         <a
           href="#settings"
@@ -440,6 +540,101 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
               ))}
               {collections.length === 0 && (
                 <tr><td colSpan={3} className="text-[13px] text-ink-muted">No collections yet — create one from the Editor.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </section>
+
+        <section id="tokens" style={{ marginTop: 48 }}>
+          <h2>Access Tokens</h2>
+          <p className="sub">
+            Personal access tokens let agents connect to the MCP endpoint at{" "}
+            <code>/api/mcp</code> with <code>Authorization: Bearer &lt;token&gt;</code>.
+            Choose the minimum scopes needed. Tokens are shown once at creation and can be revoked anytime.
+          </p>
+
+          {mintedToken && (
+            <div className="mb-4 border border-rule-strong bg-surface p-3" style={{ maxWidth: 640 }}>
+              <div className="text-[12px] font-medium mb-1">Copy this token now — it will not be shown again.</div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 overflow-x-auto whitespace-nowrap text-[12px]">{mintedToken}</code>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={copyMintedToken}>
+                  {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={createToken} className="max-w-[640px]" style={{ borderTop: "1px solid var(--rule-strong)", paddingTop: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10 }}>
+              <div className="field"><label>Token name</label><input value={tokenName} onChange={(e) => setTokenName(e.target.value)} required /></div>
+              <div className="field">
+                <label>Expires</label>
+                <select value={tokenExpiry} onChange={(e) => setTokenExpiry(e.target.value as typeof tokenExpiry)}>
+                  <option value="0">Never</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                  <option value="365">1 year</option>
+                </select>
+              </div>
+            </div>
+            <div className="field mt-3">
+              <label>Scopes</label>
+              <div className="flex flex-col gap-1.5 mt-1">
+                {ALL_SCOPE_KEYS.map((scope) => (
+                  <label key={scope} className="flex items-start gap-2 text-[12.5px] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={tokenScopes.includes(scope)}
+                      onChange={() => toggleTokenScope(scope)}
+                    />
+                    <span>
+                      <code>{scope}</code>
+                      <span style={{ color: "var(--ink-muted)" }}> — {SCOPE_LABELS[scope]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button className="btn btn-primary mt-3"><KeyRound size={13} /> Create token</button>
+          </form>
+
+          <table className="users" style={{ marginTop: 24 }}>
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th>Scopes</th>
+                <th>Last used</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokens.map((t) => (
+                <tr key={t.id}>
+                  <td>
+                    <b>{t.name}</b>
+                    <br />
+                    <code style={{ color: "var(--ink-muted)", fontSize: 12 }}>{t.token_prefix}…</code>
+                    {t.expires_at && t.expires_at < Date.now() && (
+                      <span className="role-mark role-guest" style={{ marginLeft: 6 }}>expired</span>
+                    )}
+                  </td>
+                  <td style={{ fontSize: 12 }}>
+                    {t.scopes.map((s) => (
+                      <div key={s}><code>{s}</code></div>
+                    ))}
+                  </td>
+                  <td style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                    {t.last_used_at || "Never"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button className="btn btn-danger btn-sm" onClick={() => revokeToken(t)}>Revoke</button>
+                  </td>
+                </tr>
+              ))}
+              {tokens.length === 0 && (
+                <tr><td colSpan={4} className="text-[13px] text-ink-muted">No tokens yet.</td></tr>
               )}
             </tbody>
           </table>

@@ -2,7 +2,7 @@
 
 A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Sign-in required to read, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
 
-Current version: **1.5.3** — see [CHANGELOG.md](./CHANGELOG.md).
+Current version: **1.6.0** — see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Features
 
@@ -13,9 +13,10 @@ Current version: **1.5.3** — see [CHANGELOG.md](./CHANGELOG.md).
 - **Revision history** — content, title, icon, and status snapshots are recorded automatically. Editors can inspect the latest 50 revisions and restore an earlier version; the restore itself creates a new revision so history remains recoverable.
 - **Light and dark themes** — follows the system preference on first visit, supports a persistent manual toggle in the top bar, and themes native controls and editor content consistently.
 - **Roles** — `superadmin` > `admin` > `commentator` > `guest`. Editors manage content; commentators comment; guests may only view published pages; visitors without an account are sent to sign-in.
-- **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role including Guest, suspend, delete with last-superadmin protection); collection management (rename, description, searchable [Lucide](https://lucide.dev/icons) icon picker including Food and Taxi, delete); and site settings (site name, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu. Guests cannot open `/admin`.
+- **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role including Guest, suspend, delete with last-superadmin protection); collection management (rename, description, searchable [Lucide](https://lucide.dev/icons) icon picker including Food and Taxi, delete); access tokens (create named PATs with scopes and optional expiry, copy once, revoke); and site settings (site name, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu. Guests cannot open `/admin`.
 - **Full-text search** — SQLite FTS5 search over published titles and article text, with relevance ranking, prefix matching, and context snippets.
 - **Read-only WebMCP** — compatible agents in a signed-in browser session can search, read a published page, list collections, and inspect recent updates. There are no write tools and no PAT.
+- **Personal access tokens + full MCP** — superadmins mint named GitHub-style PATs with selectable scopes from `/admin` → Access Tokens. External agents authenticate to `POST /api/mcp` with `Authorization: Bearer xk_pat_…` and get the full tool surface (read/write content, comments, revisions, collections, users, settings) capped by the token’s scopes and the owner’s role.
 - **Hardened API boundary** — pages and `/api/public/*` require a session cookie; authoring APIs require editor roles. Rich text is allowlist-sanitized, browser mutations are same-origin checked, sign-in attempts are throttled, session cookies are secure in production, and baseline security headers are enabled. See [SECURITY.md](./SECURITY.md).
 - **Version badge** — the current app version (from `package.json`) is shown small at the top right of the nav bar.
 
@@ -74,8 +75,8 @@ app/
   search/                   Search results
   catalogue/                Reader index + [...path] page renderer
   editor/                   Admin editor workspace
-  admin/                    Superadmin panel (users + collections + settings)
-  api/                      session-guarded APIs (read tools + authoring)
+  admin/                    Superadmin panel (users + collections + tokens + settings)
+  api/                      session-guarded APIs (read tools + authoring + tokens + MCP)
 components/
   TopBar.tsx                Nav + theme toggle + profile menu + version badge
   LoginForm.tsx             Sign-in form
@@ -84,7 +85,7 @@ components/
   CatalogueSidebar.tsx      Collection tree for the reader
   PageReader.tsx            Article + hideable heading outline + anchored comment threads
   EditorShell.tsx           TipTap editor, tree, inspector, autosave, collection editing
-  AdminPanel.tsx            Sticky admin nav + users/roles actions + collections + settings
+  AdminPanel.tsx            Sticky admin nav + users/roles + collections + access tokens + settings
   Icon.tsx                  Lucide icon lookup + searchable categorized IconPicker (Food, Taxi, …)
 lib/
   db.ts                     node:sqlite schema, revisions, FTS index, settings helpers
@@ -92,6 +93,8 @@ lib/
   security.ts               Same-origin guard + login rate limiting
   seed.ts                   First-run seed (transactional)
   auth.ts                   Session cookie helpers + role guards
+  tokens.ts                 PAT create/verify/revoke + scope/role caps
+  mcp.ts                    MCP tool registry and handlers
   pages.ts / comments.ts    Query helpers
   extensions.ts             Shared TipTap extension set
   images.ts                 Share-link → direct image URL resolver
@@ -114,6 +117,48 @@ These read endpoints require a signed-in session (the same cookie as the website
 | `GET /api/public/recent?limit=10` | List recent published updates (maximum 20) |
 
 The same endpoints power the four JavaScript-registered WebMCP tools. They work only when the site is open in a compatible browser with an active session. `/api/pages`, `/api/collections`, `/api/settings`, revisions, and all mutation routes remain session- and role-protected. Guests may use the read tools but cannot comment, edit, or open the admin panel.
+
+## Personal access tokens and MCP
+
+Create a token in **Admin → Access Tokens** (superadmin). Choose a name, expiry, and scopes, then copy the `xk_pat_…` secret once.
+
+| Scope | Allows |
+| --- | --- |
+| `read:content` | search, read pages, list collections/pages, recent updates |
+| `write:content` | create/update/delete pages; create collections |
+| `read:comments` / `write:comments` | list comments; add or delete comments |
+| `read:revisions` | list and restore revisions |
+| `read:drafts` | include drafts in list/read |
+| `admin:collections` | rename/update and delete collections |
+| `admin:users` | manage users |
+| `admin:settings` | get and update site settings |
+
+Effective scopes are the intersection of the token’s scopes and the owner’s live role. Guests cannot mint tokens. Revoke a token anytime from the admin panel.
+
+Connect an MCP client (Claude Code, Cursor, Claude Desktop remote MCP) to the Streamable HTTP endpoint:
+
+```json
+{
+  "mcpServers": {
+    "xinchuan": {
+      "type": "http",
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer xk_pat_YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Claude Code CLI:
+
+```bash
+claude mcp add --transport http xinchuan http://localhost:3000/api/mcp \
+  --header "Authorization: Bearer xk_pat_YOUR_TOKEN"
+```
+
+The endpoint speaks MCP JSON-RPC (`initialize`, `tools/list`, `tools/call`). Replace `localhost:3000` with your HTTPS production origin.
 
 ## Design system
 

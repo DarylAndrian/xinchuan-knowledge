@@ -14,6 +14,13 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-11
+
+### Added
+
+- Personal access tokens (GitHub-style, scoped, optional expiry) managed from Admin → Access Tokens
+- Full MCP server at POST /api/mcp authenticated with Authorization: Bearer xk_pat_… covering content read/write, comments, revisions, collections, users, and site settings
+
 ## [1.5.3] - 2026-09-11
 
 ### Changed

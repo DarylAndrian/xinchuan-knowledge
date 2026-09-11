@@ -8,7 +8,10 @@ function isPublicPath(pathname: string) {
     pathname === "/login" ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/auth/logout") ||
-    pathname.startsWith("/api/deploy/")
+    pathname.startsWith("/api/deploy/") ||
+    // MCP authenticates with Authorization: Bearer <PAT>, not the session cookie.
+    pathname === "/api/mcp" ||
+    pathname.startsWith("/api/mcp/")
   );
 }
 

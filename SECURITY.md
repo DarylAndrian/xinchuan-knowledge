@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the latest release, currently **1.5.x**.
+Security fixes are applied to the latest release, currently **1.6.x**.
 
 ## Access model
 
@@ -17,11 +17,12 @@ Roles, from most to least privileged:
 
 Drafts, revision history, user data, settings, bulk content APIs, and every write operation still require the matching role. `/api/public/*` returns a small read-only representation of published content and also requires a session.
 
-WebMCP exposes only those published-content operations. There are no WebMCP write tools and no PAT is requested from an agent.
+WebMCP exposes only those published-content operations for signed-in browser sessions. For external agents, personal access tokens (PATs) authenticate `POST /api/mcp`. Tokens store only a SHA-256 hash, are shown once at creation, can expire, and can be revoked from the admin panel. Effective MCP permissions are the intersection of the token’s scopes and the owner’s live role (so demotion or suspension immediately narrows or kills access). Guests cannot mint tokens. `/api/mcp` does not accept cookie sessions; the reverse-proxy allowlist treats it as public because the `Authorization` header is the only credential.
 
 ## Production checklist
 
 - Serve the app through HTTPS; production session cookies use the `Secure`, `HttpOnly`, and `SameSite=Lax` attributes.
+- Treat PATs like passwords: never commit or log them, revoke leaked tokens immediately, and prefer scoped tokens with expiry for integrations.
 - Set strong first-run `SUPERADMIN_USERNAME` and `SUPERADMIN_PASSWORD` values before the database is created. Do not deploy the sample credentials.
 - Set a long, random `DEPLOY_WEBHOOK_SECRET` if GitHub auto-deployment is enabled.
 - Restrict filesystem access to `data/xinchuan.db` and back it up regularly; revision history is stored in the same database.

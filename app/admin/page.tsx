@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { db, UserRow, CollectionRow, getSetting } from "@/lib/db";
+import { listAccessTokens } from "@/lib/tokens";
 import AdminPanel from "@/components/AdminPanel";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,15 @@ export default async function AdminPage() {
     open_registration: getSetting("open_registration", "0"),
     comment_approval: getSetting("comment_approval", "0"),
   };
+  const tokens = listAccessTokens(user.id);
 
-  return <AdminPanel users={users} collections={collections} settings={settings} currentUserId={user.id} />;
+  return (
+    <AdminPanel
+      users={users}
+      collections={collections}
+      settings={settings}
+      currentUserId={user.id}
+      initialTokens={tokens}
+    />
+  );
 }
