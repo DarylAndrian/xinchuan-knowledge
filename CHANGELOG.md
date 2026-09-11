@@ -14,6 +14,10 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+### Added
+
+- Brand mark and favicons: open book with outlined inkwell and tilted brass quill in the top bar, plus `icon.svg`, `favicon.ico`, and `apple-icon.png`
+
 ## [1.6.0] - 2026-09-11
 
 ### Added

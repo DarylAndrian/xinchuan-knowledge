@@ -25,6 +25,9 @@ const themeScript = `
 export const metadata: Metadata = {
   title: "Xinchuan Knowledge Center",
   description: "One place for everything we know.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default async function RootLayout({

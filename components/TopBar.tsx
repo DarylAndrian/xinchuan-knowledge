@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Search, Shield, LogOut, ChevronDown, Menu, X } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
+import BrandMark from "./BrandMark";
 
 export default function TopBar({
   user,
@@ -70,10 +71,8 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-50 border-b border-rule bg-canvas">
       <div className="mx-auto flex h-[52px] max-w-[1360px] items-center gap-2 px-3 md:gap-4 md:px-6">
-        <Link href={user ? "/" : "/login"} className="flex min-w-0 items-center gap-2 text-[14.5px] font-semibold tracking-tight">
-          <span className="grid h-6 w-6 shrink-0 place-items-center rounded border-[1.5px] border-ink text-[12px] font-bold">
-            X
-          </span>
+        <Link href={user ? "/" : "/login"} className="flex min-w-0 items-center gap-2.5 text-[14.5px] font-semibold tracking-tight">
+          <BrandMark size={24} className="shrink-0" />
           <span className="truncate sm:max-w-[260px]">{siteName}</span>
         </Link>
 
