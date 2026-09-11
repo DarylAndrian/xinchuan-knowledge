@@ -267,6 +267,26 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .editor-toolbar button.is-active { background: var(--moss); color: var(--canvas); }
 .editor-toolbar .sep { width: 1px; background: var(--rule); margin: 4px 4px; }
 
+.table-toolbar { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; margin: -10px 0 18px; background: var(--surface-elevated); position: sticky; top: 142px; z-index: 9; box-shadow: none; }
+.table-toolbar button { border: 0; background: transparent; border-radius: 3px; min-width: 28px; height: 28px; display: inline-grid; place-items: center; color: var(--ink-muted); cursor: pointer; padding: 0 4px; }
+.table-toolbar button:hover:not(:disabled) { background: var(--surface); color: var(--ink); }
+.table-toolbar button:disabled { opacity: .35; cursor: not-allowed; }
+.table-toolbar .sep { width: 1px; background: var(--rule); margin: 4px 6px; }
+.table-toolbar-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted); margin-right: 2px; white-space: nowrap; }
+.table-scope-group { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; margin-right: 4px; }
+.table-scope-btn { height: 26px !important; min-width: auto !important; padding: 0 8px !important; font-size: 11.5px; font-weight: 500; border-radius: 0 !important; color: var(--ink-muted) !important; }
+.table-scope-btn.is-active { background: var(--moss) !important; color: var(--canvas) !important; }
+.table-swatch-group { display: inline-flex; align-items: center; gap: 3px; }
+.table-swatch { width: 18px !important; min-width: 18px !important; height: 18px !important; border: 1px solid var(--rule-strong) !important; border-radius: 3px !important; padding: 0 !important; }
+.table-swatch:hover:not(:disabled) { outline: 1px solid var(--moss); }
+.table-color-input { width: 22px; height: 22px; padding: 0; border: 1px solid var(--rule-strong); border-radius: 3px; background: transparent; cursor: pointer; }
+.table-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.table-color-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+@media (max-width: 800px) {
+  .table-toolbar { top: 150px; }
+}
+
 .tiptap { outline: none; font-size: 15px; min-height: 300px; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--moss); }
 .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--rule-strong); float: left; height: 0; pointer-events: none; }

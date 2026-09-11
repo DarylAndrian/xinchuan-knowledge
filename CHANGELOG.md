@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-11
+
+### Added
+
+- Table management: add/delete rows and columns, delete tables, and color cells/rows/columns with presets or a custom color
+
 ## [1.5.1] - 2026-09-10
 
 ### Added

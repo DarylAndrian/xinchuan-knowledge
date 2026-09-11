@@ -8,9 +8,17 @@ import {
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
   History, RotateCcw,
+  Rows3, Columns3, PaintBucket, SquareDashed,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
+import {
+  applyTableBackground,
+  canDeleteCurrentColumn,
+  canDeleteCurrentRow,
+  tableHasContent,
+  type BackgroundScope,
+} from "@/lib/table-utils";
 import { resolveImageUrl, isSharePageUrl } from "@/lib/images";
 import type { CollectionRow, PageRow } from "@/lib/db";
 
@@ -76,6 +84,13 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const slugTouchedRef = useRef(false);
   const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
   const [modKey, setModKey] = useState("Ctrl");
+  const [tableUi, setTableUi] = useState({
+    active: false,
+    canDelRow: false,
+    canDelCol: false,
+    customColor: "#4B5D45",
+    scope: "cell" as BackgroundScope,
+  });
 
   useEffect(() => {
     if (isApplePlatform()) setModKey("Cmd");
@@ -87,8 +102,42 @@ export default function EditorShell({ collections: initialCollections, pages: in
     extensions: editorExtensions,
     content: "",
     immediatelyRender: false,
-    onUpdate: () => scheduleSave(),
+    onUpdate: () => {
+      scheduleSave();
+      refreshTableUi();
+    },
   });
+
+  function refreshTableUi() {
+    const ed = editorRef.current;
+    if (!ed) {
+      setTableUi((s) => (s.active ? { ...s, active: false } : s));
+      return;
+    }
+    const active = ed.isActive("table");
+    setTableUi((s) => {
+      if (!active) return s.active ? { ...s, active: false, canDelRow: false, canDelCol: false } : s;
+      const canDelRow = canDeleteCurrentRow(ed);
+      const canDelCol = canDeleteCurrentColumn(ed);
+      if (s.active === active && s.canDelRow === canDelRow && s.canDelCol === canDelCol) return s;
+      return { ...s, active, canDelRow, canDelCol };
+    });
+  }
+
+  useEffect(() => {
+    if (!editor) return;
+    const update = () => refreshTableUi();
+    editor.on("selectionUpdate", update);
+    editor.on("transaction", update);
+    editor.on("focus", update);
+    update();
+    return () => {
+      editor.off("selectionUpdate", update);
+      editor.off("transaction", update);
+      editor.off("focus", update);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // Mirror render values for the debounced saver (see refs above).
   titleRef.current = title;
@@ -480,7 +529,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
     active: boolean,
     icon: React.ReactNode,
     label: string,
-    shortcut?: string
+    shortcut?: string,
+    disabled = false
   ) => {
     const title = hint(label, shortcut);
     return (
@@ -491,11 +541,35 @@ export default function EditorShell({ collections: initialCollections, pages: in
         className={active ? "is-active" : ""}
         title={title}
         aria-label={title}
+        disabled={disabled}
       >
         {icon}
       </button>
     );
   };
+
+  const TABLE_SWATCHES: { id: string; label: string; color: string | null }[] = [
+    { id: "none", label: "No color", color: null },
+    { id: "moss", label: "Moss", color: "#D5DFCF" },
+    { id: "brass", label: "Brass", color: "#F0E2C8" },
+    { id: "brick", label: "Brick", color: "#F2D6D1" },
+    { id: "warm", label: "Warm gray", color: "#E4DFD2" },
+    { id: "cream", label: "Cream", color: "#F8F7F2" },
+  ];
+
+  function applyBg(color: string | null, scope: BackgroundScope) {
+    if (!editor) return;
+    applyTableBackground(editor, color, scope);
+    editor.chain().focus().run();
+    refreshTableUi();
+  }
+
+  function deleteTableSafe() {
+    if (!editor) return;
+    if (tableHasContent(editor) && !confirm("Delete this table and all of its contents?")) return;
+    editor.chain().focus().deleteTable().run();
+    refreshTableUi();
+  }
 
   return (
     <>
@@ -722,6 +796,65 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {toolbarBtn(toggleLink, editor.isActive("link"), <Link2 size={14} />, "Link")}
                 {toolbarBtn(insertImage, false, <ImagePlus size={14} />, "Image")}
               </div>
+
+              {tableUi.active && (
+                <div className="table-toolbar" role="toolbar" aria-label="Table tools">
+                  {toolbarBtn(() => editor.chain().focus().addRowBefore().run(), false, <Rows3 size={13} />, "Add row above")}
+                  {toolbarBtn(() => editor.chain().focus().addRowAfter().run(), false, <Rows3 size={13} />, "Add row below")}
+                  {toolbarBtn(() => editor.chain().focus().addColumnBefore().run(), false, <Columns3 size={13} />, "Add column left")}
+                  {toolbarBtn(() => editor.chain().focus().addColumnAfter().run(), false, <Columns3 size={13} />, "Add column right")}
+                  <span className="sep" />
+                  {toolbarBtn(() => editor.chain().focus().deleteRow().run(), false, <Minus size={13} />, "Delete row", undefined, !tableUi.canDelRow)}
+                  {toolbarBtn(() => editor.chain().focus().deleteColumn().run(), false, <Minus size={13} />, "Delete column", undefined, !tableUi.canDelCol)}
+                  {toolbarBtn(deleteTableSafe, false, <Trash2 size={13} />, "Delete table")}
+                  <span className="sep" />
+                  <span className="table-toolbar-label">
+                    <PaintBucket size={12} /> Fill
+                  </span>
+                  <div className="table-scope-group" role="group" aria-label="Fill target">
+                    {(["cell", "row", "column"] as BackgroundScope[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`table-scope-btn ${tableUi.scope === s ? "is-active" : ""}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setTableUi((u) => ({ ...u, scope: s }))}
+                      >
+                        {s === "cell" ? "Cell" : s === "row" ? "Row" : "Column"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="table-swatch-group" role="group" aria-label="Background colors">
+                    {TABLE_SWATCHES.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className="table-swatch"
+                        title={s.label}
+                        aria-label={s.label}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyBg(s.color, tableUi.scope)}
+                        style={{ background: s.color ?? "transparent" }}
+                      >
+                        {s.id === "none" ? <SquareDashed size={11} /> : null}
+                      </button>
+                    ))}
+                    <input
+                      type="color"
+                      className="table-color-input"
+                      title="Custom color"
+                      aria-label="Custom color"
+                      value={tableUi.customColor}
+                      onChange={(e) => {
+                        const color = e.target.value;
+                        setTableUi((s) => ({ ...s, customColor: color }));
+                        applyBg(color, tableUi.scope);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+              )}
 
               <EditorContent editor={editor} className="tiptap-wrap" />
             </div>
