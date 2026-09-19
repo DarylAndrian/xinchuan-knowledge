@@ -453,7 +453,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
 
           <h2 style={{ marginTop: 40 }}>Create user</h2>
           <form onSubmit={createUser} className="mt-3 max-w-[520px]" style={{ borderTop: "1px solid var(--rule-strong)", paddingTop: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="sa-form-grid two">
               <div className="field"><label>Name</label><input value={newName} onChange={(e) => setNewName(e.target.value)} required /></div>
               <div className="field"><label>Username</label><input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required autoComplete="off" /></div>
               <div className="field"><label>Password (6+ chars)</label><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={6} /></div>
@@ -566,7 +566,7 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
           )}
 
           <form onSubmit={createToken} className="max-w-[640px]" style={{ borderTop: "1px solid var(--rule-strong)", paddingTop: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10 }}>
+            <div className="sa-form-grid token">
               <div className="field"><label>Token name</label><input value={tokenName} onChange={(e) => setTokenName(e.target.value)} required /></div>
               <div className="field">
                 <label>Expires</label>

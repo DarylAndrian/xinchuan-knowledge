@@ -91,7 +91,7 @@ export default function TopBar({
         >
           <Search size={14} />
           Search…
-          <span className="ml-auto rounded border border-rule bg-canvas px-1.5 text-[10.5px]">⌘K</span>
+          <span className="ml-auto hidden rounded border border-rule bg-canvas px-1.5 text-[10.5px] md:inline">⌘K</span>
         </Link>
         )}
 

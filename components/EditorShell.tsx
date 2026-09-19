@@ -7,7 +7,7 @@ import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
   List, ListOrdered, ListChecks, TextQuote, CodeXml, Table, Minus,
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
-  History, RotateCcw,
+  History, RotateCcw, Menu,
   ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
   ListMinus, PaintBucket, SquareDashed, Baseline,
 } from "lucide-react";
@@ -85,6 +85,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const slugTouchedRef = useRef(false);
   const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
   const [modKey, setModKey] = useState("Ctrl");
+  const [treeOpen, setTreeOpen] = useState(false);
   const [showFontColor, setShowFontColor] = useState(false);
   const [fontColor, setFontColor] = useState("#A6483A");
   const fontColorRef = useRef<HTMLDivElement | null>(null);
@@ -234,6 +235,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
   async function selectPage(id: number | null) {
     await flushSave();
     setOpenMenuId(null);
+    setTreeOpen(false);
     setSelectedId(id);
   }
 
@@ -609,9 +611,167 @@ export default function EditorShell({ collections: initialCollections, pages: in
     setShowFontColor(false);
   }
 
+  const treeNav = (
+    <>
+      {collectionError && (
+        <div className="mb-2 border-l-2 px-2 py-1 text-[12px]" style={{ borderColor: "var(--brick)", color: "var(--brick)" }}>
+          {collectionError}
+        </div>
+      )}
+      {collections.map((c) => (
+        <div key={c.id} style={{ marginBottom: 16 }}>
+          {editingCollectionId === c.id ? (
+            <div className="rounded border border-rule-strong bg-canvas p-2" style={{ margin: "0 2px" }}>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
+              <input
+                autoFocus
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCollectionEdit(c.id);
+                  if (e.key === "Escape") setEditingCollectionId(null);
+                }}
+                placeholder="Collection name…"
+                className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+              />
+              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
+              <input
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCollectionEdit(c.id);
+                  if (e.key === "Escape") setEditingCollectionId(null);
+                }}
+                placeholder="Short description…"
+                className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+              />
+              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                Icon <span className="font-normal normal-case">(Lucide)</span>
+              </label>
+              <IconPicker value={editIcon} onChange={setEditIcon} />
+              <div className="mt-2 flex gap-1.5">
+                <button className="btn btn-primary btn-sm" onClick={() => saveCollectionEdit(c.id)}>Save</button>
+                <button className="btn btn-sm" onClick={() => setEditingCollectionId(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="sb-label">
+                <Icon name={c.icon} size={12} /> {c.name}
+                <span ref={openMenuId === c.id ? menuRef : undefined} style={{ marginLeft: "auto", position: "relative", display: "flex" }}>
+                  <button
+                    onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                    style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)", display: "grid", placeItems: "center", padding: 2 }}
+                    title="Collection actions"
+                    aria-label={`Actions for ${c.name}`}
+                    aria-haspopup="menu"
+                    aria-expanded={openMenuId === c.id}
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
+                  {openMenuId === c.id && (
+                    <span role="menu" aria-label={`Actions for ${c.name}`} className="coll-menu">
+                      <button
+                        role="menuitem"
+                        className="coll-menu-item"
+                        onClick={() => { setOpenMenuId(null); createPage(c.id, null); }}
+                      >
+                        <Plus size={12} /> New page
+                      </button>
+                      {isSuperadmin && (
+                        <>
+                          <button
+                            role="menuitem"
+                            className="coll-menu-item"
+                            onClick={() => { setOpenMenuId(null); startEditingCollection(c); }}
+                          >
+                            <Pencil size={12} /> Edit collection
+                          </button>
+                          <button
+                            role="menuitem"
+                            className="coll-menu-item danger"
+                            onClick={() => { setOpenMenuId(null); deleteCollection(c); }}
+                          >
+                            <Trash2 size={12} /> Delete collection
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {c.description && (
+                <div className="px-[10px] pb-1 text-[11.5px] leading-snug text-ink-muted">{c.description}</div>
+              )}
+            </>
+          )}
+          <nav className="tree">
+            {(treeByCollection.get(c.id) || []).map(({ page, depth }) => (
+              <button
+                key={page.id}
+                onClick={() => selectPage(page.id)}
+                className={`${depth === 1 ? "lvl2" : depth >= 2 ? "lvl3" : ""} ${page.id === selectedId ? "active" : ""}`}
+              >
+                <span className="truncate">{page.title}</span>
+                {page.status === "draft" && (
+                  <span className="ml-auto text-[10px]" style={{ color: page.id === selectedId ? "var(--canvas)" : "var(--brass)" }}>
+                    draft
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+      ))}
+
+      {showNewCollection ? (
+        <div style={{ padding: "0 10px" }}>
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
+          <input
+            autoFocus
+            value={newCollectionName}
+            onChange={(e) => setNewCollectionName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createCollection()}
+            placeholder="Collection name…"
+            className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+          />
+          <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
+          <input
+            value={newCollectionDescription}
+            onChange={(e) => setNewCollectionDescription(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createCollection()}
+            placeholder="Short description…"
+            className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
+          />
+          <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            Icon <span className="font-normal normal-case">(Lucide)</span>
+          </label>
+          <IconPicker value={newCollectionIcon} onChange={setNewCollectionIcon} />
+          <div className="mt-1.5 flex gap-1.5">
+            <button className="btn btn-primary btn-sm" onClick={createCollection}>Create</button>
+            <button className="btn btn-sm" onClick={() => { setShowNewCollection(false); setCollectionError(null); }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button className="sb-label w-full cursor-pointer hover:text-ink" onClick={() => setShowNewCollection(true)}>
+          <Plus size={12} /> New collection
+        </button>
+      )}
+    </>
+  );
+
   return (
     <>
       <div className="editor-topbar">
+        <button
+          type="button"
+          className="btn btn-sm editor-tree-toggle"
+          onClick={() => setTreeOpen((v) => !v)}
+          aria-expanded={treeOpen}
+          aria-controls="editor-tree-panel"
+        >
+          <Menu size={14} /> Pages
+        </button>
         <div className={`save-state ${saveError ? "error" : saveState !== "saved" ? "dirty" : ""}`}>
           <Check size={13} />
           {saveError
@@ -622,7 +782,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 ? "Saving…"
                 : "Unsaved changes"}
         </div>
-        <span style={{ color: "var(--rule)" }}>|</span>
+        <span className="editor-topbar-sep" style={{ color: "var(--rule)" }}>|</span>
         <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().undo().run()} title={hint("Undo", "Z")} aria-label={hint("Undo", "Z")}>
           <Undo2 size={13} />
         </button>
@@ -638,154 +798,24 @@ export default function EditorShell({ collections: initialCollections, pages: in
         </span>
       </div>
 
+      {treeOpen && (
+        <>
+          <div className="editor-tree-backdrop" onClick={() => setTreeOpen(false)} aria-hidden="true" />
+          <aside id="editor-tree-panel" className="editor-tree-panel" aria-label="Pages">
+            <div className="editor-tree-panel-head">
+              <span>Pages</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTreeOpen(false)} aria-label="Close pages panel">
+                <X size={14} />
+              </button>
+            </div>
+            {treeNav}
+          </aside>
+        </>
+      )}
+
       <div className="admin-layout">
         {/* left: tree navigator */}
-        <aside className="wiki-sidebar" style={{ position: "static", maxHeight: "none" }}>
-          {collectionError && (
-            <div className="mb-2 border-l-2 px-2 py-1 text-[12px]" style={{ borderColor: "var(--brick)", color: "var(--brick)" }}>
-              {collectionError}
-            </div>
-          )}
-          {collections.map((c) => (
-            <div key={c.id} style={{ marginBottom: 16 }}>
-              {editingCollectionId === c.id ? (
-                <div className="rounded border border-rule-strong bg-canvas p-2" style={{ margin: "0 2px" }}>
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
-                  <input
-                    autoFocus
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveCollectionEdit(c.id);
-                      if (e.key === "Escape") setEditingCollectionId(null);
-                    }}
-                    placeholder="Collection name…"
-                    className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
-                  />
-                  <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
-                  <input
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveCollectionEdit(c.id);
-                      if (e.key === "Escape") setEditingCollectionId(null);
-                    }}
-                    placeholder="Short description…"
-                    className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
-                  />
-                  <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                    Icon <span className="font-normal normal-case">(Lucide)</span>
-                  </label>
-                  <IconPicker value={editIcon} onChange={setEditIcon} />
-                  <div className="mt-2 flex gap-1.5">
-                    <button className="btn btn-primary btn-sm" onClick={() => saveCollectionEdit(c.id)}>Save</button>
-                    <button className="btn btn-sm" onClick={() => setEditingCollectionId(null)}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="sb-label">
-                    <Icon name={c.icon} size={12} /> {c.name}
-                    <span ref={openMenuId === c.id ? menuRef : undefined} style={{ marginLeft: "auto", position: "relative", display: "flex" }}>
-                      <button
-                        onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
-                        style={{ background: "none", border: 0, cursor: "pointer", color: "var(--ink-muted)", display: "grid", placeItems: "center", padding: 2 }}
-                        title="Collection actions"
-                        aria-label={`Actions for ${c.name}`}
-                        aria-haspopup="menu"
-                        aria-expanded={openMenuId === c.id}
-                      >
-                        <MoreHorizontal size={14} />
-                      </button>
-                      {openMenuId === c.id && (
-                        <span role="menu" aria-label={`Actions for ${c.name}`} className="coll-menu">
-                          <button
-                            role="menuitem"
-                            className="coll-menu-item"
-                            onClick={() => { setOpenMenuId(null); createPage(c.id, null); }}
-                          >
-                            <Plus size={12} /> New page
-                          </button>
-                          {isSuperadmin && (
-                            <>
-                              <button
-                                role="menuitem"
-                                className="coll-menu-item"
-                                onClick={() => { setOpenMenuId(null); startEditingCollection(c); }}
-                              >
-                                <Pencil size={12} /> Edit collection
-                              </button>
-                              <button
-                                role="menuitem"
-                                className="coll-menu-item danger"
-                                onClick={() => { setOpenMenuId(null); deleteCollection(c); }}
-                              >
-                                <Trash2 size={12} /> Delete collection
-                              </button>
-                            </>
-                          )}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  {c.description && (
-                    <div className="px-[10px] pb-1 text-[11.5px] leading-snug text-ink-muted">{c.description}</div>
-                  )}
-                </>
-              )}
-              <nav className="tree">
-                {(treeByCollection.get(c.id) || []).map(({ page, depth }) => (
-                  <button
-                    key={page.id}
-                    onClick={() => selectPage(page.id)}
-                    className={`${depth === 1 ? "lvl2" : depth >= 2 ? "lvl3" : ""} ${page.id === selectedId ? "active" : ""}`}
-                  >
-                    <span className="truncate">{page.title}</span>
-                    {page.status === "draft" && (
-                      <span className="ml-auto text-[10px]" style={{ color: page.id === selectedId ? "var(--canvas)" : "var(--brass)" }}>
-                        draft
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </nav>
-            </div>
-          ))}
-
-          {showNewCollection ? (
-            <div style={{ padding: "0 10px" }}>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Name</label>
-              <input
-                autoFocus
-                value={newCollectionName}
-                onChange={(e) => setNewCollectionName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createCollection()}
-                placeholder="Collection name…"
-                className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
-              />
-              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</label>
-              <input
-                value={newCollectionDescription}
-                onChange={(e) => setNewCollectionDescription(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createCollection()}
-                placeholder="Short description…"
-                className="w-full rounded border border-rule-strong bg-canvas px-2 py-1 text-[12.5px] outline-none focus:border-moss"
-              />
-              <label className="mb-1 mt-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                Icon <span className="font-normal normal-case">(Lucide)</span>
-              </label>
-              <IconPicker value={newCollectionIcon} onChange={setNewCollectionIcon} />
-              <div className="mt-1.5 flex gap-1.5">
-                <button className="btn btn-primary btn-sm" onClick={createCollection}>Create</button>
-                <button className="btn btn-sm" onClick={() => { setShowNewCollection(false); setCollectionError(null); }}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <button className="sb-label w-full cursor-pointer hover:text-ink" onClick={() => setShowNewCollection(true)}>
-              <Plus size={12} /> New collection
-            </button>
-          )}
-        </aside>
+        <aside className="wiki-sidebar">{treeNav}</aside>
 
         {/* center: editor */}
         <main className="editor-main">

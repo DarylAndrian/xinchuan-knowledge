@@ -16,8 +16,8 @@ export default async function SearchPage({
   const results = query ? searchPages(query) : [];
 
   return (
-    <main className="mx-auto max-w-[760px] px-6 pb-20 pt-16">
-      <h1 className="mb-6 text-[24px] font-semibold tracking-tight">Search</h1>
+    <main className="mx-auto max-w-[760px] px-4 pb-20 pt-10 sm:px-6 sm:pt-16">
+      <h1 className="mb-6 text-[22px] font-semibold tracking-tight sm:text-[24px]">Search</h1>
 
       <form action="/search" method="GET" className="mb-8">
         <div className="flex items-center gap-2 rounded border border-rule-strong bg-canvas px-4 py-[10px] transition-colors focus-within:border-moss">

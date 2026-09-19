@@ -19,8 +19,8 @@ export default async function HomePage() {
   const recent = getRecentPages(6);
 
   return (
-    <main className="mx-auto max-w-[860px] px-6 pb-20 pt-16">
-      <h1 className="text-[30px] font-semibold tracking-tight">Xinchuan Knowledge Center</h1>
+    <main className="mx-auto max-w-[860px] px-4 pb-20 pt-10 sm:px-6 sm:pt-16">
+      <h1 className="text-[26px] font-semibold tracking-tight sm:text-[30px]">Xinchuan Knowledge Center</h1>
       <p className="mb-6 mt-2 max-w-[58ch] text-[15px] text-ink-muted">
         One place for everything we know — guides, standards, runbooks and documents. If it isn’t
         written down here, it doesn’t exist yet.
@@ -32,7 +32,7 @@ export default async function HomePage() {
       >
         <Search size={15} />
         Try “deployment checklist”, “payment options”, “onboarding”…
-        <span className="ml-auto rounded border border-rule px-1.5 text-[10.5px]">⌘K</span>
+        <span className="ml-auto hidden rounded border border-rule px-1.5 text-[10.5px] sm:inline">⌘K</span>
       </Link>
 
       <div className="mb-1 text-[12px] font-semibold uppercase tracking-[.07em] text-ink-muted">

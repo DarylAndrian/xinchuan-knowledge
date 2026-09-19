@@ -14,6 +14,13 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-09-19
+
+### Changed
+
+- Editor left sidebar is sticky on desktop; mobile editor uses a Pages drawer instead of a tall inline tree
+- Mobile improvements: stacked home/search rows, editor/admin form grids, larger touch targets, scrollable tables and toolbars, tighter page padding
+
 ## [1.7.1] - 2026-09-11
 
 ### Added
