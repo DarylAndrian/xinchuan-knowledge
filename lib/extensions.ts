@@ -10,6 +10,25 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Mark, mergeAttributes, type Extensions } from "@tiptap/core";
 import { isSafeBackgroundColor } from "./content";
+import { TableRowResize } from "./table-row-resize";
+
+/** Prefer `colwidth`, fall back to a single `width` attribute. */
+function parseColwidth(element: HTMLElement): number[] | null {
+  const colwidth = element.getAttribute("colwidth");
+  if (colwidth) {
+    const widths = colwidth
+      .split(",")
+      .map((w) => Number.parseInt(w.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    return widths.length ? widths : null;
+  }
+  const width = element.getAttribute("width");
+  if (width) {
+    const n = Number.parseInt(width.trim(), 10);
+    return Number.isFinite(n) && n > 0 ? [n] : null;
+  }
+  return null;
+}
 
 /** Parse a safe CSS color from inline style or data attribute. */
 function parseBackgroundColor(element: HTMLElement): string | null {
@@ -36,10 +55,55 @@ function backgroundColorAttribute() {
   };
 }
 
+function parsePixelHeight(element: HTMLElement): number | null {
+  const fromAttr = element.getAttribute("height");
+  const fromStyle = element.style.height;
+  const raw = (fromAttr || fromStyle || "").trim();
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 28 ? n : null;
+}
+
+function rowHeightAttribute() {
+  return {
+    default: null as number | null,
+    parseHTML: (element: HTMLElement) => parsePixelHeight(element),
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const value = attributes.height;
+      const n = typeof value === "number" && Number.isFinite(value) && value >= 28 ? Math.round(value) : null;
+      if (n == null) return {};
+      return {
+        height: String(n),
+        style: `height: ${n}px`,
+      };
+    },
+  };
+}
+
+function colwidthAttribute() {
+  return {
+    default: null as number[] | null,
+    parseHTML: parseColwidth,
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const raw = attributes.colwidth;
+      const list = Array.isArray(raw)
+        ? raw.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0)
+        : [];
+      if (!list.length) return {};
+      const widths = list.map((n) => Math.round(n));
+      return {
+        colwidth: widths.join(","),
+        // Published HTML has no <colgroup>; emit a cell width so the reader matches the editor.
+        style: `width: ${widths[0]}px`,
+      };
+    },
+  };
+}
+
 const TableCellWithColor = TableCell.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      colwidth: colwidthAttribute(),
       backgroundColor: backgroundColorAttribute(),
     };
   },
@@ -49,7 +113,17 @@ const TableHeaderWithColor = TableHeader.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      colwidth: colwidthAttribute(),
       backgroundColor: backgroundColorAttribute(),
+    };
+  },
+});
+
+const TableRowWithHeight = TableRow.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      height: rowHeightAttribute(),
     };
   },
 });
@@ -112,10 +186,16 @@ export const editorExtensions: Extensions = [
   }),
   Image.configure({ inline: false, allowBase64: false }),
   TextColor,
-  Table.configure({ resizable: false }),
-  TableRow,
+  Table.configure({
+    resizable: true,
+    handleWidth: 6,
+    cellMinWidth: 48,
+    lastColumnResizable: true,
+  }),
+  TableRowWithHeight,
   TableHeaderWithColor,
   TableCellWithColor,
+  TableRowResize,
   TaskList,
   TaskItem.configure({ nested: true }),
 ];

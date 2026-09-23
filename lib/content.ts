@@ -12,8 +12,9 @@ const ALLOWED_TAGS = [
   "tbody", "tr", "th", "td", "span", "div", "label", "input",
 ];
 
-const CELL_STYLE_KEYS = new Set(["background-color"]);
+const CELL_STYLE_KEYS = new Set(["background-color", "width", "height"]);
 const SPAN_STYLE_KEYS = new Set(["color"]);
+const ROW_STYLE_KEYS = new Set(["height"]);
 
 function filterStyle(style: string | undefined, allowed: Set<string>): string | undefined {
   if (!style) return undefined;
@@ -25,21 +26,88 @@ function filterStyle(style: string | undefined, allowed: Set<string>): string | 
     const value = rest.join(":").trim();
     if (!allowed.has(prop)) continue;
     if ((prop === "background-color" || prop === "color") && !isSafeBackgroundColor(value)) continue;
+    if ((prop === "width" || prop === "height") && !/^\d+(\.\d+)?(px|%)$/.test(value)) continue;
     kept.push(`${prop}: ${value}`);
   }
   return kept.length ? kept.join("; ") : undefined;
 }
 
+function sanitizeSizeAttr(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  return /^\d+(\.\d+)?(px|%)$/.test(raw) || /^\d+(\.\d+)?$/.test(raw) ? raw : undefined;
+}
+
 function sanitizeCellAttrs(attribs: Record<string, string>) {
   const next: Record<string, string> = { ...attribs };
   const bg = next["data-background-color"]?.trim();
-  if (bg && isSafeBackgroundColor(bg)) {
-    next.style = `background-color: ${bg}`;
+  const width = sanitizeSizeAttr(next.width);
+  const height = sanitizeSizeAttr(next.height);
+  const colwidth = next.colwidth?.trim();
+  const safeColwidth = colwidth && /^\d+(,\d+)*$/.test(colwidth) ? colwidth : undefined;
+
+  const styleObj: Record<string, string> = {};
+  const filtered = filterStyle(next.style, CELL_STYLE_KEYS);
+  if (filtered) {
+    for (const declaration of filtered.split(";")) {
+      const [prop, ...rest] = declaration.split(":");
+      if (!prop || rest.length === 0) continue;
+      styleObj[prop.trim().toLowerCase()] = rest.join(":").trim();
+    }
+  }
+
+  const bgFinal =
+    bg && isSafeBackgroundColor(bg)
+      ? bg
+      : styleObj["background-color"] && isSafeBackgroundColor(styleObj["background-color"])
+        ? styleObj["background-color"]
+        : null;
+  const widthFinal = width || styleObj["width"];
+  const heightFinal = height || styleObj["height"];
+
+  const styleBits: string[] = [];
+  if (bgFinal) styleBits.push(`background-color: ${bgFinal}`);
+  if (widthFinal) {
+    const v = widthFinal.endsWith("%") || widthFinal.endsWith("px") ? widthFinal : `${widthFinal}px`;
+    styleBits.push(`width: ${v}`);
+    next.width = v;
   } else {
-    const style = filterStyle(next.style, CELL_STYLE_KEYS);
-    if (style) next.style = style;
-    else delete next.style;
-    if (!isSafeBackgroundColor(bg ?? "")) delete next["data-background-color"];
+    delete next.width;
+  }
+  if (heightFinal) {
+    const v = heightFinal.endsWith("%") || heightFinal.endsWith("px") ? heightFinal : `${heightFinal}px`;
+    styleBits.push(`height: ${v}`);
+    next.height = v;
+  } else {
+    delete next.height;
+  }
+
+  if (styleBits.length) next.style = styleBits.join("; ");
+  else delete next.style;
+
+  if (bgFinal) next["data-background-color"] = bgFinal;
+  else delete next["data-background-color"];
+
+  if (safeColwidth) next.colwidth = safeColwidth;
+  else delete next.colwidth;
+
+  return next;
+}
+
+function sanitizeRowAttrs(attribs: Record<string, string>) {
+  const next: Record<string, string> = { ...attribs };
+  const height = sanitizeSizeAttr(next.height);
+  const fromStyle = filterStyle(next.style, ROW_STYLE_KEYS);
+  const styleHeight = fromStyle?.match(/height\s*:\s*([^;]+)/i)?.[1]?.trim();
+  const finalHeight = height || (styleHeight && sanitizeSizeAttr(styleHeight));
+
+  if (finalHeight) {
+    const px = finalHeight.endsWith("%") || finalHeight.endsWith("px") ? finalHeight : `${finalHeight}px`;
+    next.style = `height: ${px}`;
+    next.height = px;
+  } else {
+    delete next.style;
+    delete next.height;
   }
   return next;
 }
@@ -77,8 +145,9 @@ export function sanitizeWikiHtml(html: string): string {
       ol: ["start"],
       li: ["data-type", "data-checked"],
       input: ["type", "checked", "disabled"],
-      th: ["colspan", "rowspan", "style", "data-background-color"],
-      td: ["colspan", "rowspan", "style", "data-background-color"],
+      th: ["colspan", "rowspan", "colwidth", "width", "height", "style", "data-background-color"],
+      td: ["colspan", "rowspan", "colwidth", "width", "height", "style", "data-background-color"],
+      tr: ["height", "style"],
       code: ["class"],
       span: ["data-type", "data-text-color", "style"],
       div: ["data-type"],
@@ -103,6 +172,7 @@ export function sanitizeWikiHtml(html: string): string {
       }),
       th: (_tagName, attribs) => ({ tagName: "th", attribs: sanitizeCellAttrs(attribs) }),
       td: (_tagName, attribs) => ({ tagName: "td", attribs: sanitizeCellAttrs(attribs) }),
+      tr: (_tagName, attribs) => ({ tagName: "tr", attribs: sanitizeRowAttrs(attribs) }),
       span: (_tagName, attribs) => ({ tagName: "span", attribs: sanitizeSpanAttrs(attribs) }),
     },
     enforceHtmlBoundary: true,

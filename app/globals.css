@@ -217,6 +217,42 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .wiki-content a:hover, .tiptap a:hover { color: var(--moss-hover); }
 .wiki-content img, .tiptap img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; margin: 18px 0; }
 .wiki-content table, .tiptap table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px; }
+.wiki-content table td, .wiki-content table th,
+.tiptap table td, .tiptap table th { height: auto; }
+.wiki-content table tr, .tiptap table tr { height: auto; }
+/* Column resize (prosemirror-tables) */
+.tiptap .tableWrapper { overflow-x: auto; max-width: 100%; }
+.ProseMirror.resize-cursor, .tiptap.resize-cursor { cursor: col-resize; }
+.column-resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 20;
+  background: transparent;
+  cursor: col-resize;
+  pointer-events: all;
+}
+.column-resize-handle:hover,
+.column-resize-handle.active { background: var(--moss); opacity: 0.55; }
+.column-resize-dragging { outline: 1px dashed var(--moss); }
+/* Row resize handles (custom) */
+.tiptap table tr { position: relative; }
+.row-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 6px;
+  z-index: 15;
+  cursor: row-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.row-resize-handle:hover,
+.row-resize-handle.active { background: var(--moss); opacity: 0.55; }
 .wiki-content th, .tiptap th { text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-muted); }
 .wiki-content th, .wiki-content td, .tiptap th, .tiptap td { border: 1px solid var(--rule); padding: 8px 12px; min-width: 80px; vertical-align: top; position: relative; }
 .wiki-content thead tr, .tiptap thead tr { border-bottom: 1px solid var(--rule-strong); }

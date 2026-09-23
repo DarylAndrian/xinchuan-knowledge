@@ -2,14 +2,14 @@
 
 A wiki-style knowledge base with a quiet, flat “paper and moss” aesthetic. Sign-in required to read, a rich-text admin editor, and Google Docs–style comments anchored to highlighted text.
 
-Current version: **1.7.2** — see [CHANGELOG.md](./CHANGELOG.md).
+Current version: **1.7.3** — see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Features
 
 - **Sign-in required** — visiting the site without a session redirects to `/login`. After sign-in, users return to the page they asked for.
 - **Catalogue reader** — signed-in members can read published pages. Collection sidebar tree, breadcrumbs, a Google Docs–style heading outline (H1–H3, hideable, with scroll highlighting), 68ch reading column, and a touch-friendly mobile page drawer.
 - **Anchored comments** — commentators and editors can select any text on a page to attach a comment thread. Comments appear as brass-underlined highlights with numbered indices; threads open in the right rail. Own comments can be deleted; admins can moderate any. Guests can read comments but cannot add them.
-- **Admin editor (TipTap)** — headings, bold/italic/strike, **font color** (palette + custom), bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers — all styled to match the published catalogue page. Tables support add/delete row/column, delete table, and cell/row/column background fills (presets + custom color). Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, and responsive page/collection management. Guests and commentators cannot open `/editor`.
+- **Admin editor (TipTap)** — headings, bold/italic/strike, **font color** (palette + custom), bullet/numbered/to-do lists, links, image embeds (direct URLs; Google Drive/Dropbox share links auto-converted), callouts, code blocks, tables, dividers — all styled to match the published catalogue page. Tables support **resizable columns and rows** (drag cell/row edges), add/delete row/column, delete table, and cell/row/column background fills (presets + custom color). Debounced autosave, draft/publish switch, page reparenting, editable URL slugs, page deletion, and responsive page/collection management. Guests and commentators cannot open `/editor`.
 - **Revision history** — content, title, icon, and status snapshots are recorded automatically. Editors can inspect the latest 50 revisions and restore an earlier version; the restore itself creates a new revision so history remains recoverable.
 - **Light and dark themes** — follows the system preference on first visit, supports a persistent manual toggle in the top bar, and themes native controls and editor content consistently.
 - **Roles** — `superadmin` > `admin` > `commentator` > `guest`. Editors manage content; commentators comment; guests may only view published pages; visitors without an account are sent to sign-in.
@@ -97,7 +97,9 @@ lib/
   tokens.ts                 PAT create/verify/revoke + scope/role caps
   mcp.ts                    MCP tool registry and handlers
   pages.ts / comments.ts    Query helpers
-  extensions.ts             Shared TipTap extension set
+  extensions.ts             Shared TipTap extension set (incl. resizable tables, row height)
+  table-row-resize.ts       Row-height drag handles for editor tables
+  table-utils.ts            Table selection helpers (delete row/column checks, fills)
   images.ts                 Share-link → direct image URL resolver
 proxy.ts                    Login redirect for visitors without a session cookie
 scripts/

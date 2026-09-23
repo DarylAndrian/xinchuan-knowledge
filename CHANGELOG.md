@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-09-23
+
+### Added
+
+- Resizable table columns and rows in the editor: drag column borders to resize width, drag row borders to set row height (persisted and shown in the catalogue)
+
 ## [1.7.2] - 2026-09-19
 
 ### Changed
