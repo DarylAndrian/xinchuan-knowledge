@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-10-12
+
+### Fixed
+
+- Copying lists from the editor now produces clean plain text: single-spaced items with bullet, number, or checkbox markers instead of blank-line gaps with no markers
+
 ## [1.7.3] - 2026-09-23
 
 ### Added

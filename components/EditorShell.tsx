@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
+import { clipboardTextSerializer } from "@/lib/clipboard";
 import {
   applyTableBackground,
   canDeleteCurrentColumn,
@@ -107,6 +108,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
     extensions: editorExtensions,
     content: "",
     immediatelyRender: false,
+    editorProps: { clipboardTextSerializer },
     onUpdate: () => {
       scheduleSave();
       refreshTableUi();
