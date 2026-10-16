@@ -88,7 +88,7 @@ Structure edits and coloring must survive autosave, sanitization on the API boun
 
 ## [S3] Out of Scope
 
-- Merge / split cells, column resize, header-row toggles beyond insert.
+- Header-row toggles beyond insert. Merge and split cells are available from the table toolbar (Shift-click a rectangle to merge; split restores a cell with colspan or rowspan).
 - Text color, borders, cell padding.
 - Table captions or nested tables.
 - Version release bump unless requested.

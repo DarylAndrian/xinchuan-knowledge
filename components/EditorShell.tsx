@@ -9,7 +9,7 @@ import {
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
   History, RotateCcw, Menu,
   ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
-  ListMinus, PaintBucket, SquareDashed, Baseline,
+  ListMinus, PaintBucket, SquareDashed, Baseline, TableCellsMerge, TableCellsSplit,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -94,6 +94,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
     active: false,
     canDelRow: false,
     canDelCol: false,
+    canMerge: false,
+    canSplit: false,
     customColor: "#4B5D45",
     scope: "cell" as BackgroundScope,
   });
@@ -123,11 +125,22 @@ export default function EditorShell({ collections: initialCollections, pages: in
     }
     const active = ed.isActive("table");
     setTableUi((s) => {
-      if (!active) return s.active ? { ...s, active: false, canDelRow: false, canDelCol: false } : s;
+      if (!active) {
+        if (!s.active && !s.canMerge && !s.canSplit) return s;
+        return { ...s, active: false, canDelRow: false, canDelCol: false, canMerge: false, canSplit: false };
+      }
       const canDelRow = canDeleteCurrentRow(ed);
       const canDelCol = canDeleteCurrentColumn(ed);
-      if (s.active === active && s.canDelRow === canDelRow && s.canDelCol === canDelCol) return s;
-      return { ...s, active, canDelRow, canDelCol };
+      const canMerge = ed.can().mergeCells();
+      const canSplit = ed.can().splitCell();
+      if (
+        s.active === active &&
+        s.canDelRow === canDelRow &&
+        s.canDelCol === canDelCol &&
+        s.canMerge === canMerge &&
+        s.canSplit === canSplit
+      ) return s;
+      return { ...s, active, canDelRow, canDelCol, canMerge, canSplit };
     });
   }
 
@@ -926,6 +939,23 @@ export default function EditorShell({ collections: initialCollections, pages: in
                     !tableUi.canDelCol
                   )}
                   {toolbarBtn(deleteTableSafe, false, <Trash2 size={14} />, "Delete table")}
+                  <span className="sep" />
+                  {toolbarBtn(
+                    () => editor.chain().focus().mergeCells().run(),
+                    false,
+                    <TableCellsMerge size={14} />,
+                    "Merge cells (Shift-click a rectangle first)",
+                    undefined,
+                    !tableUi.canMerge
+                  )}
+                  {toolbarBtn(
+                    () => editor.chain().focus().splitCell().run(),
+                    false,
+                    <TableCellsSplit size={14} />,
+                    "Split cell",
+                    undefined,
+                    !tableUi.canSplit
+                  )}
                   <span className="sep" />
                   <span className="table-toolbar-label">
                     <PaintBucket size={12} /> Fill

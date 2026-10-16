@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.5] - 2026-10-16
+
+### Added
+
+- Table editor: merge a rectangular cell selection, and split a merged cell back into its original cells
+
 ## [1.7.4] - 2026-10-12
 
 ### Fixed
