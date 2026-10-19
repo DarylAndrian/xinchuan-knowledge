@@ -8,9 +8,85 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import BulletList from "@tiptap/extension-bullet-list";
+import OrderedList from "@tiptap/extension-ordered-list";
 import { Mark, mergeAttributes, type Extensions } from "@tiptap/core";
 import { isSafeBackgroundColor } from "./content";
+import { bulletStyleFromElement, isStoredBulletStyle, isStoredOrderedType, orderedTypeFromElement } from "./list-styles";
 import { TableRowResize } from "./table-row-resize";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    bulletListStyle: {
+      setBulletListStyle: (style: string | null) => ReturnType;
+    };
+    orderedListStyle: {
+      setOrderedListStyle: (type: string | null) => ReturnType;
+    };
+  }
+}
+
+const StyledBulletList = BulletList.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      bulletStyle: {
+        default: null as string | null,
+        parseHTML: (element: HTMLElement) => bulletStyleFromElement(element),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const value = attributes.bulletStyle;
+          if (!isStoredBulletStyle(typeof value === "string" ? value : null)) return {};
+          return { "data-list-style": value };
+        },
+      },
+    };
+  },
+
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      setBulletListStyle: (style: string | null) => ({ chain, editor }) => {
+        const bulletStyle = isStoredBulletStyle(style) ? style : null;
+        const next = chain().focus();
+        if (!editor.isActive(this.name)) next.toggleBulletList();
+        return next.updateAttributes(this.name, { bulletStyle }).run();
+      },
+    };
+  },
+});
+
+const StyledOrderedList = OrderedList.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      type: {
+        default: null as string | null,
+        parseHTML: (element: HTMLElement) => orderedTypeFromElement(element),
+      },
+    };
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const { start, type, ...rest } = HTMLAttributes;
+    const attrs = mergeAttributes(this.options.HTMLAttributes, rest);
+    if (start !== 1) attrs.start = start;
+    if (type === "01") attrs["data-list-style"] = "decimal-leading-zero";
+    else if (isStoredOrderedType(typeof type === "string" ? type : null) && type !== "01") attrs.type = type;
+    return ["ol", attrs, 0];
+  },
+
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      setOrderedListStyle: (type: string | null) => ({ chain, editor }) => {
+        const nextType = isStoredOrderedType(type) ? type : null;
+        const next = chain().focus();
+        if (!editor.isActive(this.name)) next.toggleOrderedList();
+        return next.updateAttributes(this.name, { type: nextType }).run();
+      },
+    };
+  },
+});
 
 /** Prefer `colwidth`, fall back to a single `width` attribute. */
 function parseColwidth(element: HTMLElement): number[] | null {
@@ -176,7 +252,11 @@ export const TextColor = Mark.create({
 export const editorExtensions: Extensions = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3] },
+    bulletList: false,
+    orderedList: false,
   }),
+  StyledBulletList,
+  StyledOrderedList,
   Placeholder.configure({ placeholder: "Start writing, or insert blocks from the toolbar…" }),
   Link.configure({
     openOnClick: false,

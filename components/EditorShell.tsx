@@ -9,11 +9,12 @@ import {
   Undo2, Redo2, Check, Eye, Plus, Trash2, ExternalLink, Pencil, X, Link2, ImagePlus, MoreHorizontal,
   History, RotateCcw, Menu,
   ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
-  ListMinus, PaintBucket, SquareDashed, Baseline, TableCellsMerge, TableCellsSplit,
+  ListMinus, PaintBucket, SquareDashed, Baseline, TableCellsMerge, TableCellsSplit, ChevronDown,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
 import { clipboardTextSerializer } from "@/lib/clipboard";
+import { BULLET_STYLE_OPTIONS, ORDERED_STYLE_OPTIONS } from "@/lib/list-styles";
 import {
   applyTableBackground,
   canDeleteCurrentColumn,
@@ -90,6 +91,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [showFontColor, setShowFontColor] = useState(false);
   const [fontColor, setFontColor] = useState("#A6483A");
   const fontColorRef = useRef<HTMLDivElement | null>(null);
+  const [listMenu, setListMenu] = useState<null | "bullet" | "ordered">(null);
+  const bulletMenuRef = useRef<HTMLDivElement | null>(null);
+  const orderedMenuRef = useRef<HTMLDivElement | null>(null);
   const [tableUi, setTableUi] = useState({
     active: false,
     canDelRow: false,
@@ -281,12 +285,18 @@ export default function EditorShell({ collections: initialCollections, pages: in
   }, [openMenuId]);
 
   useEffect(() => {
-    if (!showFontColor) return;
+    if (!showFontColor && !listMenu) return;
     function onDown(e: MouseEvent) {
-      if (fontColorRef.current && !fontColorRef.current.contains(e.target as Node)) setShowFontColor(false);
+      const target = e.target as Node;
+      if (showFontColor && fontColorRef.current && !fontColorRef.current.contains(target)) setShowFontColor(false);
+      if (listMenu === "bullet" && bulletMenuRef.current && !bulletMenuRef.current.contains(target)) setListMenu(null);
+      if (listMenu === "ordered" && orderedMenuRef.current && !orderedMenuRef.current.contains(target)) setListMenu(null);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowFontColor(false);
+      if (e.key === "Escape") {
+        setShowFontColor(false);
+        setListMenu(null);
+      }
     }
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -294,7 +304,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [showFontColor]);
+  }, [showFontColor, listMenu]);
 
   /* ----- actions ----- */
   async function createPage(collectionId: number, parentId: number | null) {
@@ -859,7 +869,10 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {toolbarBtn(() => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"), <Strikethrough size={14} />, "Strikethrough", "Shift+S")}
                 <div className="font-color-wrap" ref={fontColorRef}>
                   {toolbarBtn(
-                    () => setShowFontColor((v) => !v),
+                    () => {
+                      setListMenu(null);
+                      setShowFontColor((v) => !v);
+                    },
                     editor.isActive("textColor") || showFontColor,
                     <span className="font-color-btn" style={{ ["--font-color" as string]: editor.isActive("textColor") ? (editor.getAttributes("textColor").color as string) || "#A6483A" : fontColor }}>
                       <Baseline size={14} />
@@ -904,8 +917,90 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), <Heading2 size={14} />, "Heading 2", "Alt+2")}
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }), <Heading3 size={14} />, "Heading 3", "Alt+3")}
                 <span className="sep" />
-                {toolbarBtn(() => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"), <List size={14} />, "Bullet list", "Shift+8")}
-                {toolbarBtn(() => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"), <ListOrdered size={14} />, "Numbered list", "Shift+7")}
+                <div className="list-style-wrap" ref={bulletMenuRef}>
+                  {toolbarBtn(() => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"), <List size={14} />, "Bullet list", "Shift+8")}
+                  <button
+                    type="button"
+                    className={`list-style-chevron ${listMenu === "bullet" ? "is-open" : ""}`}
+                    aria-label="Bullet style"
+                    aria-expanded={listMenu === "bullet"}
+                    aria-haspopup="menu"
+                    title="Bullet style"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setShowFontColor(false);
+                      setListMenu((cur) => (cur === "bullet" ? null : "bullet"));
+                    }}
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                  {listMenu === "bullet" && (
+                    <div className="list-style-menu" role="menu" aria-label="Bullet style">
+                      {BULLET_STYLE_OPTIONS.map((style) => {
+                        const current = (editor.getAttributes("bulletList").bulletStyle as string | null) || "disc";
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={editor.isActive("bulletList") && current === style.id}
+                            className={editor.isActive("bulletList") && current === style.id ? "is-active" : ""}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              editor.chain().focus().setBulletListStyle(style.id === "disc" ? null : style.id).run();
+                              setListMenu(null);
+                            }}
+                          >
+                            <span className="list-style-sample" aria-hidden>{style.sample}</span>
+                            {style.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="list-style-wrap" ref={orderedMenuRef}>
+                  {toolbarBtn(() => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"), <ListOrdered size={14} />, "Numbered list", "Shift+7")}
+                  <button
+                    type="button"
+                    className={`list-style-chevron ${listMenu === "ordered" ? "is-open" : ""}`}
+                    aria-label="Numbering style"
+                    aria-expanded={listMenu === "ordered"}
+                    aria-haspopup="menu"
+                    title="Numbering style"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setShowFontColor(false);
+                      setListMenu((cur) => (cur === "ordered" ? null : "ordered"));
+                    }}
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                  {listMenu === "ordered" && (
+                    <div className="list-style-menu" role="menu" aria-label="Numbering style">
+                      {ORDERED_STYLE_OPTIONS.map((style) => {
+                        const current = (editor.getAttributes("orderedList").type as string | null) || "1";
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={editor.isActive("orderedList") && current === style.id}
+                            className={editor.isActive("orderedList") && current === style.id ? "is-active" : ""}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              editor.chain().focus().setOrderedListStyle(style.id === "1" ? null : style.id).run();
+                              setListMenu(null);
+                            }}
+                          >
+                            <span className="list-style-sample" aria-hidden>{style.sample}</span>
+                            {style.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 {toolbarBtn(() => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"), <ListChecks size={14} />, "To-do list", "Shift+9")}
                 <span className="sep" />
                 {toolbarBtn(() => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"), <TextQuote size={14} />, "Callout / quote", "Shift+B")}

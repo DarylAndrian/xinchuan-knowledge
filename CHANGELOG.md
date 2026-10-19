@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.6] - 2026-10-19
+
+### Added
+
+- Bullet and numbered lists: disc, circle, square, dash, and arrow markers, plus 1, a, A, i, I, and 01 numbering
+
 ## [1.7.5] - 2026-10-16
 
 ### Added

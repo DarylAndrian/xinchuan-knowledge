@@ -1,4 +1,5 @@
 import type { Fragment, Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
+import { bulletPlainMarker, orderedPlainMarker } from "./list-styles";
 
 /**
  * Plain-text clipboard serializer for the Tiptap editor.
@@ -30,10 +31,10 @@ function inlineText(node: ProseMirrorNode): string {
   });
 }
 
-function markerFor(listName: string, item: ProseMirrorNode, orderedIndex: number): string {
-  if (listName === "orderedList") return `${orderedIndex}. `;
-  if (listName === "taskList") return item.attrs?.checked ? "[x] " : "[ ] ";
-  return "- ";
+function markerFor(list: ProseMirrorNode, item: ProseMirrorNode, orderedIndex: number): string {
+  if (list.type.name === "orderedList") return orderedPlainMarker(list.attrs?.type, orderedIndex);
+  if (list.type.name === "taskList") return item.attrs?.checked ? "[x] " : "[ ] ";
+  return bulletPlainMarker(list.attrs?.bulletStyle);
 }
 
 /** Serialize a single listItem / taskItem, including any nested lists. */
@@ -68,7 +69,7 @@ function serializeList(list: ProseMirrorNode, depth: number): string {
   let index = typeof list.attrs.start === "number" ? list.attrs.start : 1;
 
   list.content.forEach((item) => {
-    const marker = markerFor(name, item, index);
+    const marker = markerFor(list, item, index);
     if (name === "orderedList") index++;
     lines.push(serializeItem(item, depth, marker));
   });

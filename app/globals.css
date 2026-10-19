@@ -205,6 +205,15 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .wiki-content p, .tiptap p { margin-bottom: 14px; font-size: 15px; }
 .wiki-content ul, .tiptap ul { list-style: disc; padding-left: 22px; margin-bottom: 14px; font-size: 15px; }
 .wiki-content ol, .tiptap ol { list-style: decimal; padding-left: 22px; margin-bottom: 14px; font-size: 15px; }
+.wiki-content ul[data-list-style="circle"], .tiptap ul[data-list-style="circle"] { list-style-type: circle; }
+.wiki-content ul[data-list-style="square"], .tiptap ul[data-list-style="square"] { list-style-type: square; }
+.wiki-content ul[data-list-style="dash"], .tiptap ul[data-list-style="dash"] { list-style-type: "–  "; padding-left: 1.6em; }
+.wiki-content ul[data-list-style="arrow"], .tiptap ul[data-list-style="arrow"] { list-style-type: "→  "; padding-left: 1.6em; }
+.wiki-content ol[type="a"], .tiptap ol[type="a"] { list-style-type: lower-alpha; }
+.wiki-content ol[type="A"], .tiptap ol[type="A"] { list-style-type: upper-alpha; }
+.wiki-content ol[type="i"], .tiptap ol[type="i"] { list-style-type: lower-roman; }
+.wiki-content ol[type="I"], .tiptap ol[type="I"] { list-style-type: upper-roman; }
+.wiki-content ol[data-list-style="decimal-leading-zero"], .tiptap ol[data-list-style="decimal-leading-zero"] { list-style-type: decimal-leading-zero; }
 .wiki-content li, .tiptap li { margin: 3px 0; }
 .wiki-content li p, .tiptap li p { margin: 0; }
 .wiki-content blockquote, .tiptap blockquote { background: var(--surface); border-left: 2px solid var(--moss); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 20px 0; font-size: 14px; }
@@ -341,6 +350,7 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
   .editor-toolbar button { width: 36px; height: 34px; }
   .table-toolbar { position: static; margin-top: 0; }
   .font-color-menu { left: 0; right: auto; flex-wrap: wrap; max-width: min(220px, calc(100vw - 28px)); }
+  .list-style-chevron { width: 28px !important; height: 34px !important; }
   .coll-menu { left: auto; right: 4px; max-width: min(200px, calc(100vw - 24px)); }
   .wiki-sidebar, .inspector, .editor-tree-panel { -webkit-overflow-scrolling: touch; }
 }
@@ -413,6 +423,45 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
   padding: 0 !important;
 }
 .font-color-menu button:hover { outline: 1px solid var(--moss); }
+
+.list-style-wrap { position: relative; display: inline-flex; align-items: center; }
+.list-style-chevron { width: 16px !important; color: var(--ink-muted); }
+.list-style-chevron.is-open { background: var(--surface); color: var(--ink); }
+.list-style-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  box-shadow: var(--menu-shadow);
+}
+.list-style-menu button {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 28px;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 8px !important;
+  font-size: 12.5px;
+  color: var(--ink);
+  text-align: left;
+}
+.list-style-menu button .list-style-sample {
+  width: 1.6em;
+  flex: 0 0 auto;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.list-style-menu button.is-active .list-style-sample { color: inherit; }
 
 .tiptap { outline: none; font-size: 15px; min-height: 300px; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--moss); }

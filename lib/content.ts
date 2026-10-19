@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { isStoredBulletStyle, isStoredOrderedType } from "./list-styles";
 
 export function isSafeBackgroundColor(value: string): boolean {
   return /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|1|0?\.\d+)\s*\)|[a-zA-Z]+)$/.test(
@@ -112,6 +113,24 @@ function sanitizeRowAttrs(attribs: Record<string, string>) {
   return next;
 }
 
+function sanitizeUlAttrs(attribs: Record<string, string>) {
+  const next: Record<string, string> = {};
+  if (attribs["data-type"] === "taskList") next["data-type"] = "taskList";
+  const style = attribs["data-list-style"]?.trim().toLowerCase();
+  if (isStoredBulletStyle(style)) next["data-list-style"] = style;
+  return next;
+}
+
+function sanitizeOlAttrs(attribs: Record<string, string>) {
+  const next: Record<string, string> = {};
+  const start = attribs.start?.trim();
+  if (start && /^[1-9]\d*$/.test(start)) next.start = start;
+  const type = attribs.type?.trim();
+  if (type && isStoredOrderedType(type) && type !== "01") next.type = type;
+  if (attribs["data-list-style"] === "decimal-leading-zero") next["data-list-style"] = "decimal-leading-zero";
+  return next;
+}
+
 function sanitizeSpanAttrs(attribs: Record<string, string>) {
   const next: Record<string, string> = { ...attribs };
   const color = next["data-text-color"]?.trim();
@@ -141,8 +160,8 @@ export function sanitizeWikiHtml(html: string): string {
     allowedAttributes: {
       a: ["href", "title", "target", "rel"],
       img: ["src", "alt", "title", "width", "height", "loading"],
-      ul: ["data-type"],
-      ol: ["start"],
+      ul: ["data-type", "data-list-style"],
+      ol: ["start", "type", "data-list-style"],
       li: ["data-type", "data-checked"],
       input: ["type", "checked", "disabled"],
       th: ["colspan", "rowspan", "colwidth", "width", "height", "style", "data-background-color"],
@@ -173,6 +192,8 @@ export function sanitizeWikiHtml(html: string): string {
       th: (_tagName, attribs) => ({ tagName: "th", attribs: sanitizeCellAttrs(attribs) }),
       td: (_tagName, attribs) => ({ tagName: "td", attribs: sanitizeCellAttrs(attribs) }),
       tr: (_tagName, attribs) => ({ tagName: "tr", attribs: sanitizeRowAttrs(attribs) }),
+      ul: (_tagName, attribs) => ({ tagName: "ul", attribs: sanitizeUlAttrs(attribs) }),
+      ol: (_tagName, attribs) => ({ tagName: "ol", attribs: sanitizeOlAttrs(attribs) }),
       span: (_tagName, attribs) => ({ tagName: "span", attribs: sanitizeSpanAttrs(attribs) }),
     },
     enforceHtmlBoundary: true,
