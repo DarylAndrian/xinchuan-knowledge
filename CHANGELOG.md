@@ -14,6 +14,16 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.9] - 2026-10-29
+
+### Added
+
+- Editor line and paragraph spacing menu, with the same presets as Google Docs
+
+### Changed
+
+- Editor and published pages use Google Docs-style line spacing by default (1.15, no extra gap on Enter)
+
 ## [1.7.8] - 2026-10-29
 
 ### Fixed

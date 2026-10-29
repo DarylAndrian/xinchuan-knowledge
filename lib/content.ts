@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { normalizeLineHeight } from "./line-spacing";
 import { isStoredBulletStyle, isStoredOrderedType } from "./list-styles";
 
 export function isSafeBackgroundColor(value: string): boolean {
@@ -131,6 +132,21 @@ function sanitizeOlAttrs(attribs: Record<string, string>) {
   return next;
 }
 
+const BLOCK_SPACING_ATTRS = ["data-line-height", "data-space-before", "data-space-after", "style"];
+
+function sanitizeBlockSpacing(attribs: Record<string, string>) {
+  const next: Record<string, string> = {};
+  const fromStyle = attribs.style?.match(/(?:^|;)\s*line-height\s*:\s*([^;]+)/i)?.[1];
+  const lineHeight = normalizeLineHeight(attribs["data-line-height"] || fromStyle);
+  if (lineHeight) {
+    next["data-line-height"] = lineHeight;
+    next.style = `line-height: ${lineHeight}`;
+  }
+  if (attribs["data-space-before"] === "1") next["data-space-before"] = "1";
+  if (attribs["data-space-after"] === "1") next["data-space-after"] = "1";
+  return next;
+}
+
 function sanitizeSpanAttrs(attribs: Record<string, string>) {
   const next: Record<string, string> = { ...attribs };
   const color = next["data-text-color"]?.trim();
@@ -168,6 +184,10 @@ export function sanitizeWikiHtml(html: string): string {
       td: ["colspan", "rowspan", "colwidth", "width", "height", "style", "data-background-color"],
       tr: ["height", "style"],
       code: ["class"],
+      p: BLOCK_SPACING_ATTRS,
+      h1: BLOCK_SPACING_ATTRS,
+      h2: BLOCK_SPACING_ATTRS,
+      h3: BLOCK_SPACING_ATTRS,
       span: ["data-type", "data-text-color", "style"],
       div: ["data-type"],
     },
@@ -194,6 +214,10 @@ export function sanitizeWikiHtml(html: string): string {
       tr: (_tagName, attribs) => ({ tagName: "tr", attribs: sanitizeRowAttrs(attribs) }),
       ul: (_tagName, attribs) => ({ tagName: "ul", attribs: sanitizeUlAttrs(attribs) }),
       ol: (_tagName, attribs) => ({ tagName: "ol", attribs: sanitizeOlAttrs(attribs) }),
+      p: (_tagName, attribs) => ({ tagName: "p", attribs: sanitizeBlockSpacing(attribs) }),
+      h1: (_tagName, attribs) => ({ tagName: "h1", attribs: sanitizeBlockSpacing(attribs) }),
+      h2: (_tagName, attribs) => ({ tagName: "h2", attribs: sanitizeBlockSpacing(attribs) }),
+      h3: (_tagName, attribs) => ({ tagName: "h3", attribs: sanitizeBlockSpacing(attribs) }),
       span: (_tagName, attribs) => ({ tagName: "span", attribs: sanitizeSpanAttrs(attribs) }),
     },
     enforceHtmlBoundary: true,

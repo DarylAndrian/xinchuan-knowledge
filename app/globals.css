@@ -215,12 +215,17 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .article-outline .toc { margin-top: 2px; padding-bottom: 4px; }
 
 /* ---------- article + editor content (shared so the editor is WYSIWYG) ---------- */
-.wiki-content h1, .tiptap h1 { font-size: 26px; font-weight: 600; margin: 34px 0 12px; scroll-margin-top: 72px; }
-.wiki-content h2, .tiptap h2 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; margin: 40px 0 12px; scroll-margin-top: 72px; }
-.wiki-content h3, .tiptap h3 { font-size: 17px; font-weight: 600; margin: 26px 0 8px; scroll-margin-top: 72px; }
-.wiki-content p, .tiptap p { margin-bottom: 14px; font-size: 15px; }
-.wiki-content ul, .tiptap ul { list-style: disc; padding-left: 22px; margin-bottom: 14px; font-size: 15px; }
-.wiki-content ol, .tiptap ol { list-style: decimal; padding-left: 22px; margin-bottom: 14px; font-size: 15px; }
+/* Google Docs Normal text: 1.15 line spacing, 0 space before/after paragraphs. */
+.wiki-content, .tiptap { font-size: 15px; line-height: 1.15; }
+.wiki-content > :first-child, .tiptap > :first-child { margin-top: 0; }
+.wiki-content h1, .tiptap h1 { font-size: 26px; font-weight: 600; line-height: 1.15; margin: 20px 0 6px; scroll-margin-top: 72px; }
+.wiki-content h2, .tiptap h2 { font-size: 22px; font-weight: 600; letter-spacing: -.015em; line-height: 1.15; margin: 18px 0 6px; scroll-margin-top: 72px; }
+.wiki-content h3, .tiptap h3 { font-size: 17px; font-weight: 600; line-height: 1.15; margin: 16px 0 4px; scroll-margin-top: 72px; }
+.wiki-content p, .tiptap p { margin: 0; font-size: 15px; line-height: 1.15; }
+.wiki-content [data-space-before="1"], .tiptap [data-space-before="1"] { padding-top: 10px; }
+.wiki-content [data-space-after="1"], .tiptap [data-space-after="1"] { padding-bottom: 10px; }
+.wiki-content ul, .tiptap ul { list-style: disc; padding-left: 22px; margin: 0; font-size: 15px; line-height: 1.15; }
+.wiki-content ol, .tiptap ol { list-style: decimal; padding-left: 22px; margin: 0; font-size: 15px; line-height: 1.15; }
 .wiki-content ul[data-list-style="circle"], .tiptap ul[data-list-style="circle"] { list-style-type: circle; }
 .wiki-content ul[data-list-style="square"], .tiptap ul[data-list-style="square"] { list-style-type: square; }
 .wiki-content ul[data-list-style="dash"], .tiptap ul[data-list-style="dash"] { list-style-type: "–  "; padding-left: 1.6em; }
@@ -230,7 +235,7 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .wiki-content ol[type="i"], .tiptap ol[type="i"] { list-style-type: lower-roman; }
 .wiki-content ol[type="I"], .tiptap ol[type="I"] { list-style-type: upper-roman; }
 .wiki-content ol[data-list-style="decimal-leading-zero"], .tiptap ol[data-list-style="decimal-leading-zero"] { list-style-type: decimal-leading-zero; }
-.wiki-content li, .tiptap li { margin: 3px 0; }
+.wiki-content li, .tiptap li { margin: 0; }
 .wiki-content li p, .tiptap li p { margin: 0; }
 .wiki-content blockquote, .tiptap blockquote { background: var(--surface); border-left: 2px solid var(--moss); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 20px 0; font-size: 14px; }
 .wiki-content blockquote p, .tiptap blockquote p { margin: 0; }
@@ -283,7 +288,7 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .wiki-content thead tr, .tiptap thead tr { border-bottom: 1px solid var(--rule-strong); }
 .wiki-content ul[data-type="taskList"], .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
 .wiki-content ul[data-type="taskList"] li, .tiptap ul[data-type="taskList"] li { display: flex; gap: 10px; align-items: flex-start; }
-.wiki-content ul[data-type="taskList"] li > label, .tiptap ul[data-type="taskList"] li > label { flex-shrink: 0; margin-top: 4px; }
+.wiki-content ul[data-type="taskList"] li > label, .tiptap ul[data-type="taskList"] li > label { flex-shrink: 0; margin-top: 1px; }
 .wiki-content ul[data-type="taskList"] input[type="checkbox"], .tiptap ul[data-type="taskList"] input[type="checkbox"] { accent-color: var(--moss); width: 14px; height: 14px; }
 .wiki-content ul[data-type="taskList"] li[data-checked="true"] > div, .tiptap ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--ink-muted); text-decoration: line-through; }
 
@@ -479,7 +484,59 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 }
 .list-style-menu button.is-active .list-style-sample { color: inherit; }
 
-.tiptap { outline: none; font-size: 15px; min-height: 300px; }
+.line-spacing-wrap { position: relative; display: inline-flex; align-items: center; }
+.line-spacing-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  box-shadow: var(--menu-shadow);
+}
+.line-spacing-menu button {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 28px;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 8px !important;
+  font-size: 12.5px;
+  color: var(--ink);
+  text-align: left;
+}
+.line-spacing-menu button.is-active { font-weight: 600; }
+.line-spacing-rule { height: 1px; background: var(--rule); margin: 4px 6px; }
+.line-spacing-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 6px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.line-spacing-custom input {
+  width: 64px;
+  height: 26px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 6px;
+}
+.line-spacing-custom input:focus { outline: none; border-color: var(--moss); }
+
+.tiptap { outline: none; font-size: 15px; line-height: 1.15; min-height: 300px; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--moss); }
 .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--rule-strong); float: left; height: 0; pointer-events: none; }
 .tiptap:focus { outline: none; }

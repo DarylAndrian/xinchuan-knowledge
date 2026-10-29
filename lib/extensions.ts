@@ -14,6 +14,7 @@ import { Mark, mergeAttributes, type Extensions } from "@tiptap/core";
 import { isSafeBackgroundColor } from "./content";
 import { bulletStyleFromElement, isStoredBulletStyle, isStoredOrderedType, orderedTypeFromElement } from "./list-styles";
 import { TableRowResize } from "./table-row-resize";
+import { LineSpacing } from "./line-spacing";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -278,4 +279,5 @@ export const editorExtensions: Extensions = [
   TableRowResize,
   TaskList,
   TaskItem.configure({ nested: true }),
+  LineSpacing,
 ];

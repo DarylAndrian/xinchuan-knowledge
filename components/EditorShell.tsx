@@ -10,6 +10,7 @@ import {
   History, RotateCcw, Menu,
   ArrowUpFromLine, ArrowDownFromLine, ArrowLeftFromLine, ArrowRightFromLine,
   ListMinus, PaintBucket, SquareDashed, Baseline, TableCellsMerge, TableCellsSplit, ChevronDown,
+  AlignVerticalSpaceAround,
 } from "lucide-react";
 import Icon, { IconPicker } from "./Icon";
 import { editorExtensions } from "@/lib/extensions";
@@ -23,6 +24,13 @@ import {
   type BackgroundScope,
 } from "@/lib/table-utils";
 import { resolveImageUrl, isSharePageUrl } from "@/lib/images";
+import {
+  LINE_SPACING_PRESETS,
+  blockSpacingAt,
+  displayLineHeight,
+  setBlockSpacing,
+  type SpacingPatch,
+} from "@/lib/line-spacing";
 import type { CollectionRow, PageRow } from "@/lib/db";
 
 interface Props {
@@ -132,6 +140,10 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [listMenu, setListMenu] = useState<null | "bullet" | "ordered">(null);
   const bulletMenuRef = useRef<HTMLDivElement | null>(null);
   const orderedMenuRef = useRef<HTMLDivElement | null>(null);
+  const [showLineSpacing, setShowLineSpacing] = useState(false);
+  const [customSpacing, setCustomSpacing] = useState("1.15");
+  const lineSpacingRef = useRef<HTMLDivElement | null>(null);
+  const spacingRangeRef = useRef<{ from: number; to: number } | null>(null);
   const [tableUi, setTableUi] = useState({
     active: false,
     canDelRow: false,
@@ -419,17 +431,19 @@ export default function EditorShell({ collections: initialCollections, pages: in
   }, [openMenuId]);
 
   useEffect(() => {
-    if (!showFontColor && !listMenu) return;
+    if (!showFontColor && !listMenu && !showLineSpacing) return;
     function onDown(e: MouseEvent) {
       const target = e.target as Node;
       if (showFontColor && fontColorRef.current && !fontColorRef.current.contains(target)) setShowFontColor(false);
       if (listMenu === "bullet" && bulletMenuRef.current && !bulletMenuRef.current.contains(target)) setListMenu(null);
       if (listMenu === "ordered" && orderedMenuRef.current && !orderedMenuRef.current.contains(target)) setListMenu(null);
+      if (showLineSpacing && lineSpacingRef.current && !lineSpacingRef.current.contains(target)) setShowLineSpacing(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setShowFontColor(false);
         setListMenu(null);
+        setShowLineSpacing(false);
       }
     }
     document.addEventListener("mousedown", onDown);
@@ -438,7 +452,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [showFontColor, listMenu]);
+  }, [showFontColor, listMenu, showLineSpacing]);
 
   /* ----- actions ----- */
   async function withWorking<T>(
@@ -796,6 +810,27 @@ export default function EditorShell({ collections: initialCollections, pages: in
     { id: "cream", label: "Cream", color: "#F8F7F2", ink: "#23281F" },
   ];
 
+  function captureSpacingRange() {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    spacingRangeRef.current = { from, to };
+  }
+
+  function applySpacing(patch: SpacingPatch, close = false) {
+    if (!editor) return;
+    const customFieldFocused = document.activeElement instanceof HTMLInputElement
+      && lineSpacingRef.current?.contains(document.activeElement);
+    setBlockSpacing(editor, patch, customFieldFocused ? spacingRangeRef.current ?? undefined : undefined);
+    if (close) setShowLineSpacing(false);
+  }
+
+  function applyCustomSpacing() {
+    const value = customSpacing.trim();
+    if (!/^\d+(\.\d+)?$/.test(value)) return;
+    applySpacing({ lineHeight: value }, true);
+    setCustomSpacing(displayLineHeight(value));
+  }
+
   function applyFontColor(color: string | null) {
     if (!editor) return;
     const chain = editor.chain().focus();
@@ -1067,6 +1102,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                   {toolbarBtn(
                     () => {
                       setListMenu(null);
+                      setShowLineSpacing(false);
                       setShowFontColor((v) => !v);
                     },
                     editor.isActive("textColor") || showFontColor,
@@ -1112,6 +1148,84 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }), <Heading1 size={14} />, "Heading 1", "Alt+1")}
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), <Heading2 size={14} />, "Heading 2", "Alt+2")}
                 {toolbarBtn(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }), <Heading3 size={14} />, "Heading 3", "Alt+3")}
+                <div className="line-spacing-wrap" ref={lineSpacingRef}>
+                  {toolbarBtn(
+                    () => {
+                      setShowFontColor(false);
+                      setListMenu(null);
+                      setShowLineSpacing((open) => {
+                        if (open) return false;
+                        captureSpacingRange();
+                        setCustomSpacing(blockSpacingAt(editor).lineHeight);
+                        return true;
+                      });
+                    },
+                    showLineSpacing,
+                    <AlignVerticalSpaceAround size={14} />,
+                    "Line & paragraph spacing"
+                  )}
+                  {showLineSpacing && (() => {
+                    const spacing = blockSpacingAt(editor);
+                    return (
+                      <div className="line-spacing-menu" role="menu" aria-label="Line and paragraph spacing">
+                        {LINE_SPACING_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={spacing.lineHeight === preset.id}
+                            className={spacing.lineHeight === preset.id ? "is-active" : ""}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applySpacing({ lineHeight: preset.id }, true)}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <label className="line-spacing-custom">
+                          Custom
+                          <input
+                            type="number"
+                            min={1}
+                            max={3}
+                            step={0.05}
+                            aria-label="Custom line spacing"
+                            value={customSpacing}
+                            onChange={(e) => {
+                              setCustomSpacing(e.target.value);
+                              if (/^\d+(\.\d+)?$/.test(e.target.value.trim())) {
+                                applySpacing({ lineHeight: e.target.value });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                applyCustomSpacing();
+                              }
+                            }}
+                            onBlur={applyCustomSpacing}
+                          />
+                        </label>
+                        <div className="line-spacing-rule" />
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applySpacing({ spaceBefore: !spacing.spaceBefore })}
+                        >
+                          {spacing.spaceBefore ? "Remove space before paragraph" : "Add space before paragraph"}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applySpacing({ spaceAfter: !spacing.spaceAfter })}
+                        >
+                          {spacing.spaceAfter ? "Remove space after paragraph" : "Add space after paragraph"}
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <span className="sep" />
                 <div className="list-style-wrap" ref={bulletMenuRef}>
                   {toolbarBtn(() => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"), <List size={14} />, "Bullet list", "Shift+8")}
@@ -1125,6 +1239,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setShowFontColor(false);
+                      setShowLineSpacing(false);
                       setListMenu((cur) => (cur === "bullet" ? null : "bullet"));
                     }}
                   >
@@ -1167,6 +1282,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setShowFontColor(false);
+                      setShowLineSpacing(false);
                       setListMenu((cur) => (cur === "ordered" ? null : "ordered"));
                     }}
                   >
