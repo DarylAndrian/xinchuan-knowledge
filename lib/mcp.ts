@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { db, PageRow, CollectionRow, UserRow, Role, recordPageRevision, syncPageSearch, slugify } from "./db";
+import {
+  db, PageRow, CollectionRow, UserRow, Role, recordPageRevision, syncPageSearch, slugify,
+  commitPageUpdate, STALE_PAGE_MESSAGE,
+} from "./db";
 import { htmlToText, sanitizeWikiHtml } from "./content";
+import { contentJsonFromHtml, providedContentJson } from "./doc-json";
 import { getComments } from "./comments";
 import { getCollectionPages, getRecentPages, hrefForPage, searchPages } from "./pages";
 import { Scope, TokenPrincipal, hasScope } from "./tokens";
@@ -104,12 +108,8 @@ function nextPosition(collectionId: number, parentId: number | null): number {
   return row.p;
 }
 
-function contentFromArgs(args: Record<string, unknown>): { html: string; json: string } {
-  const contentHtml = str(args.content_html);
-  if (contentHtml) return { html: sanitizeWikiHtml(contentHtml), json: str(args.content_json, "{}") };
-  const plain = str(args.content).trim();
-  if (!plain) return { html: "", json: "{}" };
-  const paragraphs = plain
+function plainTextToHtml(plain: string): string {
+  return plain
     .split(/\n{2,}/)
     .map((block) => {
       const escaped = block
@@ -120,7 +120,29 @@ function contentFromArgs(args: Record<string, unknown>): { html: string; json: s
       return `<p>${escaped}</p>`;
     })
     .join("");
-  return { html: sanitizeWikiHtml(paragraphs), json: "{}" };
+}
+
+/** HTML (or plain text) plus a TipTap document. HTML without JSON rebuilds the editor copy. */
+function contentFromArgs(args: Record<string, unknown>): { html: string; json: string } {
+  const explicitJson = providedContentJson(args.content_json);
+  let html = "";
+  if (typeof args.content_html === "string" && args.content_html.trim()) {
+    html = sanitizeWikiHtml(args.content_html);
+  } else if (typeof args.content === "string" && args.content.trim()) {
+    html = sanitizeWikiHtml(plainTextToHtml(args.content));
+  }
+  const json = explicitJson ?? (html.trim() ? contentJsonFromHtml(html) : "{}");
+  return { html, json };
+}
+
+function expectedUpdatedAt(args: Record<string, unknown>): string | null {
+  return typeof args.expected_updated_at === "string" && args.expected_updated_at
+    ? args.expected_updated_at
+    : null;
+}
+
+function assertFresh(page: PageRow, expected: string | null): void {
+  if (expected && expected !== page.updated_at) throw new McpToolError(STALE_PAGE_MESSAGE);
 }
 
 const ROLES: Role[] = ["superadmin", "admin", "commentator", "guest"];
@@ -269,6 +291,7 @@ const tools: ToolDef[] = [
         parent_id: { type: "integer", minimum: 1 },
         content: { type: "string", description: "Plain text content (paragraphs separated by blank lines)." },
         content_html: { type: "string", description: "Sanitized wiki HTML (preferred if both provided)." },
+        content_json: { type: "string", description: "TipTap document JSON. Built from HTML when omitted." },
         status: { type: "string", enum: ["draft", "published"] },
       },
       required: ["collection_id", "title"],
@@ -301,7 +324,7 @@ const tools: ToolDef[] = [
         )
         .run(collectionId, parentId, title, slug, content.json, content.html, status, position, principal.user.id);
       const pageId = Number(info.lastInsertRowid);
-      recordPageRevision(pageId, principal.user.id, true);
+      recordPageRevision(pageId, principal.user.id, true, "api");
       syncPageSearch(pageId);
       const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId) as unknown as PageRow;
       return pagePayload(page, true);
@@ -319,6 +342,11 @@ const tools: ToolDef[] = [
         slug: { type: "string" },
         content: { type: "string" },
         content_html: { type: "string" },
+        content_json: { type: "string", description: "TipTap document JSON. Built from HTML when omitted." },
+        expected_updated_at: {
+          type: "string",
+          description: "When set, the update is rejected if the page's updated_at no longer matches.",
+        },
         status: { type: "string", enum: ["draft", "published"] },
         parent_id: { type: ["integer", "null"] },
         collection_id: { type: "integer" },
@@ -332,6 +360,8 @@ const tools: ToolDef[] = [
       if (!pageId) throw new McpToolError("page_id is required");
       const existing = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId) as unknown as PageRow | undefined;
       if (!existing) throw new McpToolError("Page not found", -32001);
+      const expected = expectedUpdatedAt(args);
+      assertFresh(existing, expected);
 
       const targetCollectionId =
         typeof args.collection_id === "number" ? args.collection_id : existing.collection_id;
@@ -394,6 +424,10 @@ const tools: ToolDef[] = [
         const content = contentFromArgs(args);
         sets.push("content_html = ?", "content_json = ?");
         values.push(content.html, content.json);
+      } else if (typeof args.content_json === "string") {
+        const explicitJson = providedContentJson(args.content_json);
+        sets.push("content_json = ?");
+        values.push(explicitJson ?? args.content_json);
       }
       if (args.status === "draft" || args.status === "published") {
         sets.push("status = ?");
@@ -409,10 +443,12 @@ const tools: ToolDef[] = [
       }
       if (sets.length === 0) throw new McpToolError("Nothing to update");
       sets.push("updated_at = datetime('now')", "updated_by = ?");
-      values.push(principal.user.id, pageId);
-      db.prepare(`UPDATE pages SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+      values.push(principal.user.id);
+      const written = commitPageUpdate(pageId, sets, values, expected);
+      if (written.status === "missing") throw new McpToolError("Page not found", -32001);
+      if (written.status === "stale") throw new McpToolError(STALE_PAGE_MESSAGE);
       const force = Boolean(args.status && args.status !== existing.status);
-      recordPageRevision(pageId, principal.user.id, force);
+      recordPageRevision(pageId, principal.user.id, force, "api");
       syncPageSearch(pageId);
       const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId) as unknown as PageRow;
       return pagePayload(page, true);
@@ -666,6 +702,10 @@ const tools: ToolDef[] = [
       properties: {
         page_id: { type: "integer", minimum: 1 },
         revision_id: { type: "integer", minimum: 1 },
+        expected_updated_at: {
+          type: "string",
+          description: "When set, the restore is rejected if the page's updated_at no longer matches.",
+        },
       },
       required: ["page_id", "revision_id"],
       additionalProperties: false,
@@ -687,12 +727,18 @@ const tools: ToolDef[] = [
           }
         | undefined;
       if (!revision) throw new McpToolError("Revision not found", -32001);
+      const current = db.prepare("SELECT updated_at FROM pages WHERE id = ?").get(pageId) as
+        | { updated_at: string }
+        | undefined;
+      if (!current) throw new McpToolError("Page not found", -32001);
+      const expected = expectedUpdatedAt(args);
+      if (expected && expected !== current.updated_at) throw new McpToolError(STALE_PAGE_MESSAGE);
       try {
         db.exec("BEGIN IMMEDIATE");
-        recordPageRevision(pageId, principal.user.id, true);
-        db.prepare(
+        recordPageRevision(pageId, principal.user.id, true, "api");
+        const restored = db.prepare(
           `UPDATE pages SET title = ?, icon = ?, content_json = ?, content_html = ?,
-            status = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`
+            status = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?${expected ? " AND updated_at = ?" : ""}`
         ).run(
           revision.title,
           revision.icon,
@@ -700,9 +746,19 @@ const tools: ToolDef[] = [
           sanitizeWikiHtml(revision.content_html),
           revision.status,
           principal.user.id,
-          pageId
+          pageId,
+          ...(expected ? [expected] : []),
         );
-        recordPageRevision(pageId, principal.user.id, true);
+        if (Number(restored.changes) === 0 && expected) {
+          const latest = db.prepare("SELECT updated_at FROM pages WHERE id = ?").get(pageId) as
+            | { updated_at: string }
+            | undefined;
+          if (!latest || latest.updated_at !== expected) {
+            db.exec("ROLLBACK");
+            throw new McpToolError(STALE_PAGE_MESSAGE);
+          }
+        }
+        recordPageRevision(pageId, principal.user.id, true, "api");
         syncPageSearch(pageId);
         db.exec("COMMIT");
       } catch (error) {

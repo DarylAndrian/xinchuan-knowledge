@@ -21,6 +21,7 @@ export default function TopBar({
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const canEdit = !!user && (user.role === "admin" || user.role === "superadmin");
@@ -43,9 +44,15 @@ export default function TopBar({
   }, [pathname]);
 
   async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setSigningOut(false);
+    }
   }
 
   const navLink = (href: string, label: string) => {
@@ -129,9 +136,10 @@ export default function TopBar({
                 )}
                 <button
                   onClick={signOut}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-ink hover:bg-surface"
+                  disabled={signingOut}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-ink hover:bg-surface disabled:cursor-progress disabled:opacity-60"
                 >
-                  <LogOut size={14} className="text-ink-muted" /> Sign out
+                  <LogOut size={14} className="text-ink-muted" /> {signingOut ? "Signing out…" : "Sign out"}
                 </button>
               </div>
             )}
@@ -167,7 +175,9 @@ export default function TopBar({
             </>
           )}
           {user ? (
-            <button onClick={signOut}><LogOut size={15} /> Sign out · {user.name}</button>
+            <button onClick={signOut} disabled={signingOut}>
+              <LogOut size={15} /> {signingOut ? "Signing out…" : `Sign out · ${user.name}`}
+            </button>
           ) : (
             <Link href="/login">Sign in</Link>
           )}

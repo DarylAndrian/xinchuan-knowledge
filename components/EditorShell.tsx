@@ -34,6 +34,26 @@ interface Props {
 
 type SaveState = "saved" | "dirty" | "saving";
 
+const STALE_PAGE_MESSAGE = "This page was changed elsewhere, reload to see the latest";
+
+function editorContentFromPage(page: Pick<PageRow, "content_json" | "content_html">): object | string {
+  const raw = (page.content_json || "").trim();
+  if (raw && raw !== "{}" && raw !== "null") {
+    try {
+      const json = JSON.parse(raw) as { type?: unknown };
+      if (json && typeof json === "object" && json.type) return json;
+    } catch {
+      /* HTML below is the readable copy. */
+    }
+  }
+  return page.content_html?.trim() ? page.content_html : "";
+}
+
+type PatchResult =
+  | { ok: true; page: PageRow }
+  | { ok: false; stale: true }
+  | { ok: false; stale: false; error: string };
+
 function isApplePlatform() {
   if (typeof navigator === "undefined") return false;
   return /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
@@ -60,6 +80,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [title, setTitle] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [newCollectionIcon, setNewCollectionIcon] = useState("book");
@@ -76,9 +97,20 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [working, setWorking] = useState<
+    | "page"
+    | "collection"
+    | "collection-save"
+    | "collection-delete"
+    | "publish"
+    | "slug"
+    | "delete"
+    | "move"
+    | "restore"
+    | null
+  >(null);
   const menuRef = useRef<HTMLSpanElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipNextUpdate = useRef(false);
   // Fresh-value mirrors: the debounced saver must read these, never render
   // closures — otherwise a keystroke's save sends the pre-keystroke (-1) title.
   const titleRef = useRef("");
@@ -86,6 +118,12 @@ export default function EditorShell({ collections: initialCollections, pages: in
   const editorRef = useRef<Editor | null>(null);
   const slugTouchedRef = useRef(false);
   const pendingSave = useRef<{ pageId: number; title: string } | null>(null);
+  const loadedUpdatedAtRef = useRef<string | null>(null);
+  const saveBlockedRef = useRef(false);
+  const writeChain = useRef<Promise<void>>(Promise.resolve());
+  const performSaveRef = useRef<() => Promise<void>>(async () => {});
+  const saveNowRef = useRef<() => Promise<void>>(async () => {});
+  const workingRef = useRef(false);
   const [modKey, setModKey] = useState("Ctrl");
   const [treeOpen, setTreeOpen] = useState(false);
   const [showFontColor, setShowFontColor] = useState(false);
@@ -175,13 +213,11 @@ export default function EditorShell({ collections: initialCollections, pages: in
     setSlugInput(selected.slug);
     setSlugError(null);
     slugTouchedRef.current = false;
-    skipNextUpdate.current = true;
-    try {
-      const json = JSON.parse(selected.content_json || "{}");
-      editor.commands.setContent(json && json.type ? json : "", { emitUpdate: false });
-    } catch {
-      editor.commands.setContent("", { emitUpdate: false });
-    }
+    loadedUpdatedAtRef.current = selected.updated_at;
+    saveBlockedRef.current = false;
+    setStale(false);
+    setSaveError(null);
+    editor.commands.setContent(editorContentFromPage(selected), { emitUpdate: false });
     setSaveState("saved");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, editor]);
@@ -194,24 +230,36 @@ export default function EditorShell({ collections: initialCollections, pages: in
 
   /* ----- autosave (snapshot fresh values; never render closures) ----- */
   const scheduleSave = useCallback(() => {
-    if (skipNextUpdate.current) {
-      skipNextUpdate.current = false;
-      return;
-    }
+    if (saveBlockedRef.current) return;
     const pageId = selectedIdRef.current;
     if (pageId == null) return;
     setSaveState("dirty");
     pendingSave.current = { pageId, title: titleRef.current };
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveNow(), 900);
+    saveTimer.current = setTimeout(() => void saveNowRef.current(), 900);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function saveNow() {
+  function markConflict() {
+    saveBlockedRef.current = true;
+    pendingSave.current = null;
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    setStale(true);
+    setSaveError(STALE_PAGE_MESSAGE);
+    setSaveState("saved");
+  }
+
+  function rememberVersion(page: PageRow) {
+    if (page.id === selectedIdRef.current) loadedUpdatedAtRef.current = page.updated_at;
+    setPages((ps) => ps.map((p) => (p.id === page.id ? { ...p, ...page } : p)));
+    if (!slugTouchedRef.current && page.id === selectedIdRef.current) setSlugInput(page.slug);
+  }
+
+  async function performSave() {
+    if (saveBlockedRef.current) return;
     const pending = pendingSave.current;
     const ed = editorRef.current;
     if (!pending || !ed) return;
@@ -224,29 +272,115 @@ export default function EditorShell({ collections: initialCollections, pages: in
         title: pending.title,
         content_json: JSON.stringify(ed.getJSON()),
         content_html: ed.getHTML(),
+        expected_updated_at: loadedUpdatedAtRef.current,
+        source: "editor",
       }),
     });
-    if (res.ok) {
-      const updated = (await res.json()) as PageRow;
-      setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-      if (!slugTouchedRef.current) setSlugInput(updated.slug);
-      setSaveError(null);
-      // Another keystroke may have queued a newer save while this one flew.
-      setSaveState(pendingSave.current ? "dirty" : "saved");
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setSaveError(data.error || "Could not save. Please try again.");
-      setSaveState("dirty");
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409 && data.code === "stale_page") {
+      markConflict();
+      return;
     }
+    if (res.ok) {
+      rememberVersion(data as PageRow);
+      setSaveError(null);
+      setSaveState(pendingSave.current ? "dirty" : "saved");
+      return;
+    }
+    setSaveError(data.error || "Could not save. Please try again.");
+    setSaveState("dirty");
   }
 
-  /** Save any pending changes now (used before switching/deleting pages). */
-  async function flushSave() {
+  function enqueueWrite(task?: () => Promise<void> | void): Promise<void> {
+    const run = writeChain.current.then(async () => {
+      if (task) await task();
+      else await performSaveRef.current();
+    });
+    writeChain.current = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  async function saveNow() {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    if (pendingSave.current) await saveNow();
+    await enqueueWrite();
+  }
+
+  performSaveRef.current = performSave;
+  saveNowRef.current = saveNow;
+
+  async function patchPage(pageId: number, body: Record<string, unknown>): Promise<PatchResult> {
+    let result: PatchResult = { ok: false, stale: false, error: "Could not save." };
+    await enqueueWrite(async () => {
+      await performSaveRef.current();
+      if (saveBlockedRef.current) {
+        result = { ok: false, stale: true };
+        return;
+      }
+      const res = await fetch(`/api/pages/${pageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          expected_updated_at: loadedUpdatedAtRef.current,
+          source: "editor",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.code === "stale_page") {
+        markConflict();
+        result = { ok: false, stale: true };
+        return;
+      }
+      if (!res.ok) {
+        result = { ok: false, stale: false, error: data.error || "Could not save." };
+        return;
+      }
+      const page = data as PageRow;
+      rememberVersion(page);
+      result = { ok: true, page };
+    });
+    return result;
+  }
+
+  async function reloadFromServer() {
+    const pageId = selectedIdRef.current;
+    if (pageId == null) return;
+    pendingSave.current = null;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    await enqueueWrite(async () => {
+      const res = await fetch(`/api/pages/${pageId}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError(data.error || "Could not reload this page.");
+        return;
+      }
+      const updated = data as PageRow;
+      setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+      setTitle(updated.title);
+      titleRef.current = updated.title;
+      setSlugInput(updated.slug);
+      slugTouchedRef.current = false;
+      loadedUpdatedAtRef.current = updated.updated_at;
+      saveBlockedRef.current = false;
+      setStale(false);
+      setSaveError(null);
+      setSaveState("saved");
+      editorRef.current?.commands.setContent(editorContentFromPage(updated), { emitUpdate: false });
+    });
+  }
+
+  /** Save any pending changes now (used before switching/deleting pages). */
+  async function flushSave() {
+    await saveNow();
   }
 
   /** Switch pages only after the current page's pending save has landed,
@@ -262,7 +396,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveNow();
+      void saveNowRef.current();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -307,39 +441,63 @@ export default function EditorShell({ collections: initialCollections, pages: in
   }, [showFontColor, listMenu]);
 
   /* ----- actions ----- */
-  async function createPage(collectionId: number, parentId: number | null) {
-    const res = await fetch("/api/pages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ collection_id: collectionId, parent_id: parentId, title: "Untitled" }),
-    });
-    if (!res.ok) return;
-    const page = (await res.json()) as PageRow;
-    setPages((ps) => [...ps, page]);
-    await selectPage(page.id);
+  async function withWorking<T>(
+    key: NonNullable<typeof working>,
+    task: () => Promise<T>,
+    quiet = false
+  ): Promise<T | undefined> {
+    if (!quiet && workingRef.current) return;
+    if (!quiet) {
+      workingRef.current = true;
+      setWorking(key);
+    }
+    try {
+      return await task();
+    } finally {
+      if (!quiet) {
+        workingRef.current = false;
+        setWorking(null);
+      }
+    }
+  }
+
+  async function createPage(collectionId: number, parentId: number | null, quiet = false) {
+    await withWorking("page", async () => {
+      const res = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collection_id: collectionId, parent_id: parentId, title: "Untitled" }),
+      });
+      if (!res.ok) return;
+      const page = (await res.json()) as PageRow;
+      setPages((ps) => [...ps, page]);
+      await selectPage(page.id);
+    }, quiet);
   }
 
   async function createCollection() {
     const name = newCollectionName.trim();
     if (!name) return;
     setCollectionError(null);
-    const res = await fetch("/api/collections", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: newCollectionDescription.trim(), icon: newCollectionIcon }),
+    await withWorking("collection", async () => {
+      const res = await fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: newCollectionDescription.trim(), icon: newCollectionIcon }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCollectionError(data.error || "Could not create collection.");
+        return;
+      }
+      const collection = (await res.json()) as CollectionRow;
+      setCollections((cs) => [...cs, collection]);
+      setNewCollectionName("");
+      setNewCollectionDescription("");
+      setNewCollectionIcon("book");
+      setShowNewCollection(false);
+      await createPage(collection.id, null, true);
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setCollectionError(data.error || "Could not create collection.");
-      return;
-    }
-    const collection = (await res.json()) as CollectionRow;
-    setCollections((cs) => [...cs, collection]);
-    setNewCollectionName("");
-    setNewCollectionDescription("");
-    setNewCollectionIcon("book");
-    setShowNewCollection(false);
-    await createPage(collection.id, null);
   }
 
   function startEditingCollection(c: CollectionRow) {
@@ -357,18 +515,20 @@ export default function EditorShell({ collections: initialCollections, pages: in
       return;
     }
     setCollectionError(null);
-    const res = await fetch(`/api/collections/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: editDescription, icon: editIcon }),
+    await withWorking("collection-save", async () => {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: editDescription, icon: editIcon }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCollectionError(data.error || "Could not save collection.");
+        return;
+      }
+      setCollections((cs) => cs.map((c) => (c.id === id ? { ...c, ...data } : c)));
+      setEditingCollectionId(null);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setCollectionError(data.error || "Could not save collection.");
-      return;
-    }
-    setCollections((cs) => cs.map((c) => (c.id === id ? { ...c, ...data } : c)));
-    setEditingCollectionId(null);
   }
 
   async function deleteCollection(c: CollectionRow) {
@@ -379,58 +539,52 @@ export default function EditorShell({ collections: initialCollections, pages: in
       )
     )
       return;
-    const res = await fetch(`/api/collections/${c.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setCollectionError(data.error || "Could not delete collection.");
-      return;
-    }
-    // Abandon any pending page save — those pages are gone.
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    pendingSave.current = null;
-    setCollections((cs) => cs.filter((x) => x.id !== c.id));
-    setPages((ps) => ps.filter((p) => p.collection_id !== c.id));
-    if (selected && selected.collection_id === c.id) {
-      const remaining = pages.filter((p) => p.collection_id !== c.id);
-      setSelectedId(remaining[0]?.id ?? null);
-    }
-    if (editingCollectionId === c.id) setEditingCollectionId(null);
+    await withWorking("collection-delete", async () => {
+      const res = await fetch(`/api/collections/${c.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCollectionError(data.error || "Could not delete collection.");
+        return;
+      }
+      // Abandon any pending page save — those pages are gone.
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      pendingSave.current = null;
+      setCollections((cs) => cs.filter((x) => x.id !== c.id));
+      setPages((ps) => ps.filter((p) => p.collection_id !== c.id));
+      if (selected && selected.collection_id === c.id) {
+        const remaining = pages.filter((p) => p.collection_id !== c.id);
+        setSelectedId(remaining[0]?.id ?? null);
+      }
+      if (editingCollectionId === c.id) setEditingCollectionId(null);
+    });
   }
 
   async function togglePublish() {
     if (!selected) return;
     const status = selected.status === "published" ? "draft" : "published";
-    const res = await fetch(`/api/pages/${selected.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+    const pageId = selected.id;
+    await withWorking("publish", async () => {
+      await patchPage(pageId, { status });
     });
-    if (res.ok) {
-      const updated = (await res.json()) as PageRow;
-      setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-    }
   }
 
   async function deletePage() {
     if (!selected || !confirm(`Delete “${selected.title}” and all its sub-pages?`)) return;
-    await flushSave();
-    await fetch(`/api/pages/${selected.id}`, { method: "DELETE" });
-    const remaining = pages.filter((p) => p.id !== selected.id && p.parent_id !== selected.id);
-    setPages(remaining);
-    setSelectedId(remaining[0]?.id ?? null);
+    await withWorking("delete", async () => {
+      await flushSave();
+      await fetch(`/api/pages/${selected.id}`, { method: "DELETE" });
+      const remaining = pages.filter((p) => p.id !== selected.id && p.parent_id !== selected.id);
+      setPages(remaining);
+      setSelectedId(remaining[0]?.id ?? null);
+    });
   }
 
   async function movePage(parentId: number | null) {
     if (!selected) return;
-    const res = await fetch(`/api/pages/${selected.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parent_id: parentId }),
+    const pageId = selected.id;
+    await withWorking("move", async () => {
+      await patchPage(pageId, { parent_id: parentId });
     });
-    if (res.ok) {
-      const updated = (await res.json()) as PageRow;
-      setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-    }
   }
 
   function toggleLink() {
@@ -473,20 +627,16 @@ export default function EditorShell({ collections: initialCollections, pages: in
       return;
     }
     setSlugError(null);
-    const res = await fetch(`/api/pages/${selected.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
+    const pageId = selected.id;
+    await withWorking("slug", async () => {
+      const result = await patchPage(pageId, { slug });
+      if (!result.ok) {
+        if (!result.stale) setSlugError(result.error);
+        return;
+      }
+      setSlugInput(result.page.slug);
+      slugTouchedRef.current = false;
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setSlugError(data.error || "Could not save slug.");
-      return;
-    }
-    const updated = data as PageRow;
-    setPages((ps) => ps.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-    setSlugInput(updated.slug);
-    slugTouchedRef.current = false;
   }
 
   async function loadHistory() {
@@ -507,26 +657,45 @@ export default function EditorShell({ collections: initialCollections, pages: in
 
   async function restoreRevision(revision: RevisionSummary) {
     if (!selected || !confirm(`Restore “${revision.title}” from ${formatRevisionDate(revision.created_at)}?`)) return;
+    const pageId = selected.id;
     setHistoryError(null);
-    const response = await fetch(`/api/pages/${selected.id}/revisions/${revision.id}/restore`, { method: "POST" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setHistoryError(data.error || "Could not restore this revision.");
-      return;
-    }
-    const updated = data.page as PageRow;
-    setPages((current) => current.map((page) => page.id === updated.id ? { ...page, ...updated } : page));
-    setTitle(updated.title);
-    titleRef.current = updated.title;
-    setSlugInput(updated.slug);
-    try {
-      const json = JSON.parse(updated.content_json || "{}");
-      editor?.commands.setContent(json && json.type ? json : "", { emitUpdate: false });
-    } catch {
-      editor?.commands.setContent("", { emitUpdate: false });
-    }
-    setSaveState("saved");
-    await loadHistory();
+    await withWorking("restore", async () => {
+      let failed = false;
+      await enqueueWrite(async () => {
+        await performSaveRef.current();
+        if (saveBlockedRef.current) {
+          failed = true;
+          return;
+        }
+        const response = await fetch(`/api/pages/${pageId}/revisions/${revision.id}/restore`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expected_updated_at: loadedUpdatedAtRef.current }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409 && data.code === "stale_page") {
+          markConflict();
+          failed = true;
+          return;
+        }
+        if (!response.ok) {
+          setHistoryError(data.error || "Could not restore this revision.");
+          failed = true;
+          return;
+        }
+        const updated = data.page as PageRow;
+        setPages((current) => current.map((page) => page.id === updated.id ? { ...page, ...updated } : page));
+        setTitle(updated.title);
+        titleRef.current = updated.title;
+        setSlugInput(updated.slug);
+        slugTouchedRef.current = false;
+        loadedUpdatedAtRef.current = updated.updated_at;
+        editorRef.current?.commands.setContent(editorContentFromPage(updated), { emitUpdate: false });
+        setSaveError(null);
+        setSaveState("saved");
+      });
+      if (!failed) await loadHistory();
+    });
   }
 
   function formatRevisionDate(value: string) {
@@ -675,7 +844,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
               </label>
               <IconPicker value={editIcon} onChange={setEditIcon} />
               <div className="mt-2 flex gap-1.5">
-                <button className="btn btn-primary btn-sm" onClick={() => saveCollectionEdit(c.id)}>Save</button>
+                <button className="btn btn-primary btn-sm" disabled={working === "collection-save"} onClick={() => saveCollectionEdit(c.id)}>
+                  {working === "collection-save" ? "Saving…" : "Save"}
+                </button>
                 <button className="btn btn-sm" onClick={() => setEditingCollectionId(null)}>Cancel</button>
               </div>
             </div>
@@ -699,7 +870,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
                       <button
                         role="menuitem"
                         className="coll-menu-item"
-                        onClick={() => { setOpenMenuId(null); createPage(c.id, null); }}
+                        onClick={() => { setOpenMenuId(null); void createPage(c.id, null); }}
                       >
                         <Plus size={12} /> New page
                       </button>
@@ -773,7 +944,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
           </label>
           <IconPicker value={newCollectionIcon} onChange={setNewCollectionIcon} />
           <div className="mt-1.5 flex gap-1.5">
-            <button className="btn btn-primary btn-sm" onClick={createCollection}>Create</button>
+            <button className="btn btn-primary btn-sm" disabled={!!working} onClick={createCollection}>
+              {working === "collection" ? "Creating…" : "Create"}
+            </button>
             <button className="btn btn-sm" onClick={() => { setShowNewCollection(false); setCollectionError(null); }}>Cancel</button>
           </div>
         </div>
@@ -797,15 +970,38 @@ export default function EditorShell({ collections: initialCollections, pages: in
         >
           <Menu size={14} /> Pages
         </button>
-        <div className={`save-state ${saveError ? "error" : saveState !== "saved" ? "dirty" : ""}`}>
+        <div className={`save-state ${stale || saveError ? "error" : working || saveState !== "saved" ? "dirty" : ""}`} aria-live="polite">
           <Check size={13} />
-          {saveError
-            ? saveError
-            : saveState === "saved"
-              ? "Saved"
-              : saveState === "saving"
-                ? "Saving…"
-                : "Unsaved changes"}
+          {working === "page"
+            ? "Creating page…"
+            : working === "collection"
+              ? "Creating collection…"
+              : working === "collection-save"
+                ? "Saving collection…"
+                : working === "collection-delete"
+                  ? "Deleting collection…"
+                  : working === "publish"
+                    ? "Updating status…"
+                    : working === "slug"
+                      ? "Saving slug…"
+                      : working === "delete"
+                        ? "Deleting page…"
+                        : working === "move"
+                          ? "Moving page…"
+                          : working === "restore"
+                            ? "Restoring revision…"
+                            : saveError
+                              ? saveError
+                              : saveState === "saved"
+                                ? "Saved"
+                                : saveState === "saving"
+                                  ? "Saving…"
+                                  : "Unsaved changes"}
+          {stale && (
+            <button type="button" className="btn btn-sm" onClick={() => void reloadFromServer()}>
+              Reload
+            </button>
+          )}
         </div>
         <span className="editor-topbar-sep" style={{ color: "var(--rule)" }}>|</span>
         <button className="btn btn-ghost btn-sm" onClick={() => editor?.chain().focus().undo().run()} title={hint("Undo", "Z")} aria-label={hint("Undo", "Z")}>
@@ -1121,7 +1317,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
                   <button
                     className={`switch ${selected.status === "published" ? "" : "off"}`}
                     onClick={togglePublish}
-                    aria-label="Toggle publish"
+                    disabled={working === "publish"}
+                    aria-busy={working === "publish"}
+                    aria-label={working === "publish" ? "Updating publish status" : "Toggle publish"}
                   />
                 </div>
               </div>
@@ -1129,6 +1327,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
                 <label>Parent page</label>
                 <select
                   value={selected.parent_id ?? ""}
+                  disabled={working === "move"}
+                  aria-busy={working === "move"}
                   onChange={(e) => movePage(e.target.value ? Number(e.target.value) : null)}
                 >
                   <option value="">(none — top level)</option>
@@ -1149,7 +1349,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
                     placeholder="page-url-slug"
                     className="min-w-0 flex-1"
                   />
-                  <button className="btn btn-sm shrink-0" onClick={saveSlug}>Save</button>
+                  <button className="btn btn-sm shrink-0" disabled={working === "slug"} onClick={saveSlug}>
+                    {working === "slug" ? "Saving…" : "Save"}
+                  </button>
                 </div>
                 {slugError && (
                   <p className="mt-1 text-[12px]" style={{ color: "var(--brick)" }}>{slugError}</p>
@@ -1167,8 +1369,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
               </p>
 
               <h4>Revision history</h4>
-              <button className="btn btn-sm" onClick={showHistory ? () => setShowHistory(false) : loadHistory}>
-                <History size={13} /> {showHistory ? "Hide history" : "View history"}
+              <button className="btn btn-sm" disabled={historyLoading} onClick={showHistory ? () => setShowHistory(false) : loadHistory}>
+                <History size={13} /> {historyLoading ? "Loading history…" : showHistory ? "Hide history" : "View history"}
               </button>
               {showHistory && (
                 <div className="revision-list" aria-live="polite">
@@ -1183,8 +1385,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
                         <small>{revision.editor_name || "System"}{index === 0 ? ` · ${formatRevisionDate(revision.created_at)}` : ""}</small>
                       </div>
                       {index > 0 && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => restoreRevision(revision)} title="Restore this revision">
-                          <RotateCcw size={12} /> Restore
+                        <button className="btn btn-ghost btn-sm" disabled={working === "restore"} onClick={() => restoreRevision(revision)} title="Restore this revision">
+                          <RotateCcw size={12} /> {working === "restore" ? "Restoring…" : "Restore"}
                         </button>
                       )}
                     </div>
@@ -1193,8 +1395,8 @@ export default function EditorShell({ collections: initialCollections, pages: in
               )}
 
               <h4>Danger zone</h4>
-              <button className="btn btn-danger btn-sm" onClick={deletePage}>
-                <Trash2 size={12} /> Delete page
+              <button className="btn btn-danger btn-sm" disabled={working === "delete"} onClick={deletePage}>
+                <Trash2 size={12} /> {working === "delete" ? "Deleting…" : "Delete page"}
               </button>
             </>
           ) : (

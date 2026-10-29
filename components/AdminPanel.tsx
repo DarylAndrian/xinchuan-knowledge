@@ -34,11 +34,13 @@ type SafeUser = Omit<UserRow, "password_hash">;
 function UserActionMenu({
   user,
   canDelete,
+  disabled = false,
   onToggleSuspended,
   onDelete,
 }: {
   user: SafeUser;
   canDelete: boolean;
+  disabled?: boolean;
   onToggleSuspended: () => void;
   onDelete: () => void;
 }) {
@@ -97,6 +99,7 @@ function UserActionMenu({
         type="button"
         className="user-action-trigger"
         onClick={() => setOpen((value) => !value)}
+        disabled={disabled}
         aria-label={`Actions for ${user.name}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -139,6 +142,8 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   const [settings, setSettings] = useState(initialSettings);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
   const [activeSection, setActiveSection] = useState("users");
 
   const [newName, setNewName] = useState("");
@@ -201,53 +206,96 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
     setNotice(null);
   }
 
+  function begin(key: string) {
+    if (busyRef.current) return false;
+    busyRef.current = key;
+    setBusy(key);
+    return true;
+  }
+  function finish() {
+    busyRef.current = null;
+    setBusy(null);
+  }
+
+  function busyText(key: string | null) {
+    if (!key) return null;
+    if (key.startsWith("user:")) return "Updating user…";
+    if (key === "create-user") return "Creating user…";
+    if (key.startsWith("collection-save:")) return "Saving collection…";
+    if (key.startsWith("collection-delete:")) return "Deleting collection…";
+    if (key === "create-token") return "Creating token…";
+    if (key.startsWith("revoke:")) return "Revoking token…";
+    if (key === "settings") return "Saving settings…";
+    return "Working…";
+  }
+
   async function patchUser(id: number, body: Record<string, unknown>) {
-    const res = await fetch(`/api/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Update failed.");
-    setUsers((us) => us.map((u) => (u.id === id ? { ...u, ...data } : u)));
-    flash("Saved.");
+    if (!begin(`user:${id}`)) return;
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Update failed.");
+      setUsers((us) => us.map((u) => (u.id === id ? { ...u, ...data } : u)));
+      flash("Saved.");
+    } finally {
+      finish();
+    }
   }
 
   async function deleteUser(u: SafeUser) {
     if (!confirm(`Delete ${u.name} (${u.username})? Their comments will be removed.`)) return;
-    const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Delete failed.");
-    setUsers((us) => us.filter((x) => x.id !== u.id));
-    flash("User deleted.");
+    if (!begin(`user:${u.id}`)) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Delete failed.");
+      setUsers((us) => us.filter((x) => x.id !== u.id));
+      flash("User deleted.");
+    } finally {
+      finish();
+    }
   }
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, username: newUsername, password: newPassword, role: newRole }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Could not create user.");
-    setUsers((us) => [...us, data]);
-    setNewName("");
-    setNewUsername("");
-    setNewPassword("");
-    setNewRole("guest");
-    flash("User created.");
+    if (!begin("create-user")) return;
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName, username: newUsername, password: newPassword, role: newRole }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Could not create user.");
+      setUsers((us) => [...us, data]);
+      setNewName("");
+      setNewUsername("");
+      setNewPassword("");
+      setNewRole("guest");
+      flash("User created.");
+    } finally {
+      finish();
+    }
   }
 
   async function saveSettings() {
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) return flashError("Could not save settings.");
-    flash("Settings saved.");
-    router.refresh(); // refresh site name in the top bar
+    if (!begin("settings")) return;
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) return flashError("Could not save settings.");
+      flash("Settings saved.");
+      router.refresh();
+    } finally {
+      finish();
+    }
   }
 
   function startEditingCollection(c: CollectionRow) {
@@ -260,26 +308,36 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
   async function saveCollection(id: number) {
     const name = editName.trim();
     if (!name) return flashError("Collection name is required.");
-    const res = await fetch(`/api/collections/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: editDescription, icon: editIcon }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Could not save collection.");
-    setCollections((cs) => cs.map((c) => (c.id === id ? { ...c, ...data } : c)));
-    setEditingId(null);
-    flash("Collection saved.");
+    if (!begin(`collection-save:${id}`)) return;
+    try {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: editDescription, icon: editIcon }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Could not save collection.");
+      setCollections((cs) => cs.map((c) => (c.id === id ? { ...c, ...data } : c)));
+      setEditingId(null);
+      flash("Collection saved.");
+    } finally {
+      finish();
+    }
   }
 
   async function deleteCollection(c: CollectionRow) {
     if (!confirm(`Delete collection “${c.name}” and all its pages? This cannot be undone.`)) return;
-    const res = await fetch(`/api/collections/${c.id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Delete failed.");
-    setCollections((cs) => cs.filter((x) => x.id !== c.id));
-    if (editingId === c.id) setEditingId(null);
-    flash("Collection deleted.");
+    if (!begin(`collection-delete:${c.id}`)) return;
+    try {
+      const res = await fetch(`/api/collections/${c.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Delete failed.");
+      setCollections((cs) => cs.filter((x) => x.id !== c.id));
+      if (editingId === c.id) setEditingId(null);
+      flash("Collection deleted.");
+    } finally {
+      finish();
+    }
   }
 
   const roleMark = (role: Role) =>
@@ -296,46 +354,56 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
 
   async function createToken(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: tokenName,
-        scopes: tokenScopes,
-        expires_in_days: tokenExpiry === "0" ? null : Number(tokenExpiry),
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Could not create token.");
-    setMintedToken(data.token);
-    setMintedTokenId(data.id);
-    setCopied(false);
-    setTokens((ts) => [
-      {
-        id: data.id,
-        name: data.name,
-        token_prefix: data.token_prefix,
-        scopes: data.scopes,
-        last_used_at: data.last_used_at,
-        created_at: data.created_at,
-        expires_at: data.expires_at,
-      },
-      ...ts,
-    ]);
-    flash("Token created — copy it now.");
+    if (!begin("create-token")) return;
+    try {
+      const res = await fetch("/api/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: tokenName,
+          scopes: tokenScopes,
+          expires_in_days: tokenExpiry === "0" ? null : Number(tokenExpiry),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Could not create token.");
+      setMintedToken(data.token);
+      setMintedTokenId(data.id);
+      setCopied(false);
+      setTokens((ts) => [
+        {
+          id: data.id,
+          name: data.name,
+          token_prefix: data.token_prefix,
+          scopes: data.scopes,
+          last_used_at: data.last_used_at,
+          created_at: data.created_at,
+          expires_at: data.expires_at,
+        },
+        ...ts,
+      ]);
+      flash("Token created — copy it now.");
+    } finally {
+      finish();
+    }
   }
 
   async function revokeToken(token: AccessTokenPublic) {
     if (!confirm(`Revoke token “${token.name}” (${token.token_prefix}…)? Agents using it will lose access.`)) return;
-    const res = await fetch(`/api/tokens/${token.id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return flashError(data.error || "Revoke failed.");
-    setTokens((ts) => ts.filter((t) => t.id !== token.id));
-    if (mintedTokenId === token.id) {
-      setMintedToken(null);
-      setMintedTokenId(null);
+    if (!begin(`revoke:${token.id}`)) return;
+    try {
+      const res = await fetch(`/api/tokens/${token.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return flashError(data.error || "Revoke failed.");
+      setTokens((ts) => ts.filter((t) => t.id !== token.id));
+      if (mintedTokenId === token.id) {
+        setMintedToken(null);
+        setMintedTokenId(null);
+      }
+      flash("Token revoked.");
+    } finally {
+      finish();
     }
-    flash("Token revoked.");
   }
 
   async function copyMintedToken() {
@@ -390,6 +458,11 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
       </aside>
 
       <main className="sa-main">
+        {busy && (
+          <div className="mb-4 border-l-2 border-moss bg-surface px-4 py-2 text-[13px]" role="status">
+            {busyText(busy)}
+          </div>
+        )}
         {notice && <div className="mb-4 border-l-2 border-moss bg-surface px-4 py-2 text-[13px]">{notice}</div>}
         {error && <div className="mb-4 border-l-2 border-brick bg-surface px-4 py-2 text-[13px] text-brick">{error}</div>}
 
@@ -434,14 +507,15 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                     <span className={`role-mark ${roleMark(u.role)}`}>{u.role}</span>
                   </td>
                   <td>
-                    <span className={`status-text ${u.suspended ? "off" : "ok"}`}>
-                      {u.suspended ? "Suspended" : "Active"}
+                    <span className={`status-text ${busy === `user:${u.id}` ? "" : u.suspended ? "off" : "ok"}`}>
+                      {busy === `user:${u.id}` ? "Updating…" : u.suspended ? "Suspended" : "Active"}
                     </span>
                   </td>
                   <td className="user-actions-cell">
                     <UserActionMenu
                       user={u}
                       canDelete={u.id !== currentUserId}
+                      disabled={!!busy}
                       onToggleSuspended={() => patchUser(u.id, { suspended: u.suspended ? 0 : 1 })}
                       onDelete={() => deleteUser(u)}
                     />
@@ -467,7 +541,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                 </select>
               </div>
             </div>
-            <button className="btn btn-primary"><Plus size={13} /> Create user</button>
+            <button className="btn btn-primary" disabled={!!busy}>
+              <Plus size={13} /> {busy === "create-user" ? "Creating…" : "Create user"}
+            </button>
           </form>
         </section>
 
@@ -522,7 +598,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     {editingId === c.id ? (
                       <>
-                        <button className="btn btn-primary btn-sm" onClick={() => saveCollection(c.id)}>Save</button>
+                        <button className="btn btn-primary btn-sm" disabled={busy === `collection-save:${c.id}`} onClick={() => saveCollection(c.id)}>
+                          {busy === `collection-save:${c.id}` ? "Saving…" : "Save"}
+                        </button>
                         <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
                       </>
                     ) : (
@@ -530,8 +608,8 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                         <button className="btn btn-ghost btn-sm" onClick={() => startEditingCollection(c)}>
                           <Pencil size={12} /> Edit
                         </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => deleteCollection(c)}>
-                          Delete
+                        <button className="btn btn-danger btn-sm" disabled={busy === `collection-delete:${c.id}`} onClick={() => deleteCollection(c)}>
+                          {busy === `collection-delete:${c.id}` ? "Deleting…" : "Delete"}
                         </button>
                       </>
                     )}
@@ -597,7 +675,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                 ))}
               </div>
             </div>
-            <button className="btn btn-primary mt-3"><KeyRound size={13} /> Create token</button>
+            <button className="btn btn-primary mt-3" disabled={!!busy}>
+              <KeyRound size={13} /> {busy === "create-token" ? "Creating…" : "Create token"}
+            </button>
           </form>
 
           <table className="users" style={{ marginTop: 24 }}>
@@ -629,7 +709,9 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
                     {t.last_used_at || "Never"}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <button className="btn btn-danger btn-sm" onClick={() => revokeToken(t)}>Revoke</button>
+                    <button className="btn btn-danger btn-sm" disabled={busy === `revoke:${t.id}`} onClick={() => revokeToken(t)}>
+                      {busy === `revoke:${t.id}` ? "Revoking…" : "Revoke"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -660,8 +742,8 @@ export default function AdminPanel({ users: initialUsers, collections: initialCo
               Require approval for new commentators
               <button className={`switch ${settings.comment_approval === "1" ? "" : "off"}`} onClick={() => toggleSetting("comment_approval")} aria-label="Comment approval" />
             </div>
-            <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={saveSettings}>
-              Save settings
+            <button className="btn btn-primary" style={{ marginTop: 14 }} disabled={busy === "settings"} onClick={saveSettings}>
+              {busy === "settings" ? "Saving…" : "Save settings"}
             </button>
           </div>
         </section>

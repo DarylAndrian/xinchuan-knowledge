@@ -64,6 +64,22 @@ body { background: var(--canvas); color: var(--ink); font-size: 14px; line-heigh
 .btn-ghost { border-color: transparent; color: var(--ink-muted); }
 .btn-ghost:hover { background: var(--surface); color: var(--ink); }
 .btn-sm { padding: 4px 10px; font-size: 12.5px; }
+.btn:disabled { opacity: .55; cursor: progress; }
+
+.route-progress-slot { position: fixed; top: 0; left: 0; right: 0; z-index: 80; height: 0; pointer-events: none; }
+.route-progress { position: absolute; top: 0; left: 0; right: 0; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--moss) 28%, transparent); }
+.route-progress::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--moss); animation: route-progress 1s ease-in-out infinite; }
+.route-skeleton { display: block; border-radius: 3px; background: var(--rule-strong); position: relative; overflow: hidden; min-height: 10px; }
+.route-loading-label { margin: 0 0 18px; font-size: 13px; font-weight: 600; letter-spacing: .01em; color: var(--moss); }
+@media (prefers-reduced-motion: no-preference) {
+  .route-skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--surface-elevated), transparent); animation: route-shimmer 1.25s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-progress::before { animation: none; width: 100%; }
+  .route-skeleton::after { display: none; }
+}
+@keyframes route-progress { 0% { transform: translateX(-120%); } 100% { transform: translateX(380%); } }
+@keyframes route-shimmer { 100% { transform: translateX(100%); } }
 
 .theme-toggle { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: 4px; color: var(--ink-muted); background: transparent; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
 .theme-toggle:hover { color: var(--ink); background: var(--surface); border-color: var(--rule); }
@@ -504,7 +520,7 @@ table.users td { padding: 11px 12px; border-bottom: 1px solid var(--rule); verti
 .user-actions-cell { position: relative; width: 52px; text-align: right; }
 .user-action { position: relative; display: inline-flex; }
 .user-action-trigger { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; color: var(--ink-muted); background: transparent; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
-.user-action-trigger:hover, .user-action-trigger[aria-expanded="true"] { color: var(--ink); background: var(--surface); border-color: var(--rule-strong); }
+.user-action-trigger:disabled { opacity: .45; cursor: progress; }
 .user-action-menu { position: absolute; z-index: 40; right: 0; top: calc(100% + 5px); width: 184px; padding: 4px; border: 1px solid var(--rule-strong); border-radius: 5px; background: var(--surface-elevated); box-shadow: var(--menu-shadow); text-align: left; }
 .user-action-menu button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
 .user-action-menu button:hover, .user-action-menu button:focus-visible { background: var(--surface); }

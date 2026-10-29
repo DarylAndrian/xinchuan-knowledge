@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, slugify, PageRow, recordPageRevision, syncPageSearch } from "@/lib/db";
+import {
+  db, slugify, PageRow, recordPageRevision, syncPageSearch, commitPageUpdate, STALE_PAGE_MESSAGE, RevisionSource,
+} from "@/lib/db";
 import { getSessionUser, isEditor } from "@/lib/auth";
 import { sanitizeWikiHtml } from "@/lib/content";
+import { contentJsonFromHtml, providedContentJson } from "@/lib/doc-json";
 import { enforceSameOrigin } from "@/lib/security";
+
+function stale(updatedAt: string | null) {
+  return NextResponse.json(
+    { error: STALE_PAGE_MESSAGE, code: "stale_page", updated_at: updatedAt },
+    { status: 409 },
+  );
+}
+
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const user = await getSessionUser();
+  if (!isEditor(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const { id } = await ctx.params;
+  const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(Number(id));
+  if (!page) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(page);
+}
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const originError = enforceSameOrigin(req);
@@ -16,6 +35,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
+  const expectedUpdatedAt =
+    typeof body.expected_updated_at === "string" && body.expected_updated_at ? body.expected_updated_at : null;
+  if (expectedUpdatedAt && expectedUpdatedAt !== existing.updated_at) {
+    return stale(existing.updated_at);
+  }
+
   const sets: string[] = [];
   const values: (string | number | null)[] = [];
 
@@ -83,15 +108,25 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       values.push(slug);
     }
   }
-  for (const key of ["icon", "content_json"] as const) {
-    if (typeof body[key] === "string") {
-      sets.push(`${key} = ?`);
-      values.push(body[key]);
-    }
+  if (typeof body.icon === "string") {
+    sets.push("icon = ?");
+    values.push(body.icon);
   }
-  if (typeof body.content_html === "string") {
+  const html = typeof body.content_html === "string" ? sanitizeWikiHtml(body.content_html) : undefined;
+  const explicitJson = providedContentJson(body.content_json);
+  if (html !== undefined) {
     sets.push("content_html = ?");
-    values.push(sanitizeWikiHtml(body.content_html));
+    values.push(html);
+  }
+  if (explicitJson) {
+    sets.push("content_json = ?");
+    values.push(explicitJson);
+  } else if (html !== undefined) {
+    sets.push("content_json = ?");
+    values.push(contentJsonFromHtml(html));
+  } else if (typeof body.content_json === "string") {
+    sets.push("content_json = ?");
+    values.push(body.content_json);
   }
   if (body.status === "draft" || body.status === "published") {
     sets.push("status = ?");
@@ -108,11 +143,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (sets.length === 0) return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
 
   sets.push("updated_at = datetime('now')", "updated_by = ?");
-  values.push(user!.id, pageId);
-  db.prepare(`UPDATE pages SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+  values.push(user!.id);
+  const written = commitPageUpdate(pageId, sets, values, expectedUpdatedAt);
+  if (written.status === "missing") return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (written.status === "stale") return stale(written.updated_at);
 
   const forceRevision = body.status && body.status !== existing.status;
-  recordPageRevision(pageId, user!.id, Boolean(forceRevision));
+  const source: RevisionSource = body.source === "editor" ? "editor" : "api";
+  recordPageRevision(pageId, user!.id, Boolean(forceRevision), source);
   syncPageSearch(pageId);
   const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId);
   return NextResponse.json(page);

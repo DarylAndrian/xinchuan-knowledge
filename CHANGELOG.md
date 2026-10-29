@@ -14,6 +14,20 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.8] - 2026-10-29
+
+### Fixed
+
+- HTML-only page updates rebuild the editor document, so the reader and the editor stay in sync
+- An editor tab left open no longer overwrites a newer edit; it asks you to reload
+- Each MCP or API write keeps its own restorable revision
+
+## [1.7.7] - 2026-10-29
+
+### Added
+
+- Loading states for page changes, and for editor, admin, comment, and sign-out actions
+
 ## [1.7.6] - 2026-10-19
 
 ### Added

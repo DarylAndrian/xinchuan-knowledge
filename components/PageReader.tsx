@@ -88,6 +88,7 @@ export default function PageReader({
   const pendingRange = useRef<Range | null>(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const threads = useMemo(() => {
     const roots = comments.filter((c) => c.parent_id === null);
@@ -246,81 +247,93 @@ export default function PageReader({
   /* ----- actions ----- */
   const commentOnSelection = useCallback(async () => {
     const range = pendingRange.current;
-    setToolbarPos(null);
     if (!range) return;
     const quote = range.toString().trim();
     if (!quote) return;
     setBusy(true);
-    const res = await fetch("/api/comments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page_id: pageId, quote, body: "" }),
-    });
-    setBusy(false);
-    if (!res.ok) return;
-    const created: CommentWithAuthor = await res.json();
-    // wrap immediately with a provisional index
-    const el = containerRef.current;
-    if (el) {
-      try {
-        const span = document.createElement("span");
-        span.className = "c-anch open";
-        span.dataset.cid = String(created.id);
-        range.surroundContents(span);
-        const tag = document.createElement("span");
-        tag.className = "c-anchor-idx";
-        tag.textContent = String(threads.length + 1);
-        span.appendChild(tag);
-        span.addEventListener("click", () => setOpenId(created.id));
-      } catch {
-        /* selection crossed nodes; thread still exists in rail */
+    try {
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: pageId, quote, body: "" }),
+      });
+      if (!res.ok) return;
+      const created: CommentWithAuthor = await res.json();
+      const el = containerRef.current;
+      if (el) {
+        try {
+          const span = document.createElement("span");
+          span.className = "c-anch open";
+          span.dataset.cid = String(created.id);
+          range.surroundContents(span);
+          const tag = document.createElement("span");
+          tag.className = "c-anchor-idx";
+          tag.textContent = String(threads.length + 1);
+          span.appendChild(tag);
+          span.addEventListener("click", () => setOpenId(created.id));
+        } catch {
+          /* selection crossed nodes; thread still exists in rail */
+        }
       }
+      setComments((cs) => [...cs, created]);
+      setOpenId(created.id);
+    } finally {
+      setBusy(false);
+      setToolbarPos(null);
     }
-    setComments((cs) => [...cs, created]);
-    setOpenId(created.id);
   }, [pageId, threads.length]);
 
   async function submitReply() {
     if (!openThread || !reply.trim()) return;
     setBusy(true);
-    const res = await fetch("/api/comments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        page_id: pageId,
-        quote: "",
-        body: reply.trim(),
-        parent_id: openThread.root.id,
-      }),
-    });
-    setBusy(false);
-    if (!res.ok) return;
-    const created: CommentWithAuthor = await res.json();
-    setComments((cs) => [...cs, created]);
-    setReply("");
+    try {
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_id: pageId,
+          quote: "",
+          body: reply.trim(),
+          parent_id: openThread.root.id,
+        }),
+      });
+      if (!res.ok) return;
+      const created: CommentWithAuthor = await res.json();
+      setComments((cs) => [...cs, created]);
+      setReply("");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitThreadBody() {
-    // first message of a brand-new thread created from a selection
     if (!openThread || openThread.root.body || !reply.trim()) return;
     setBusy(true);
-    const res = await fetch(`/api/comments/${openThread.root.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: reply.trim() }),
-    });
-    setBusy(false);
-    if (!res.ok) return;
-    setComments((cs) =>
-      cs.map((c) => (c.id === openThread.root.id ? { ...c, body: reply.trim() } : c))
-    );
-    setReply("");
+    try {
+      const res = await fetch(`/api/comments/${openThread.root.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: reply.trim() }),
+      });
+      if (!res.ok) return;
+      setComments((cs) =>
+        cs.map((c) => (c.id === openThread.root.id ? { ...c, body: reply.trim() } : c))
+      );
+      setReply("");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteComment(id: number) {
-    const res = await fetch(`/api/comments/${id}`, { method: "DELETE" });
-    if (!res.ok) return;
-    setComments((cs) => cs.map((c) => (c.id === id ? { ...c, deleted_at: new Date().toISOString() } : c)));
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/comments/${id}`, { method: "DELETE" });
+      if (!res.ok) return;
+      setComments((cs) => cs.map((c) => (c.id === id ? { ...c, deleted_at: new Date().toISOString() } : c)));
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const canDelete = (c: CommentWithAuthor) => canModerate || c.author_id === currentUserId;
@@ -431,8 +444,8 @@ export default function PageReader({
                   {!c.deleted_at && (
                     <div className="actions">
                       {canDelete(c) && (
-                        <button className="del" onClick={() => deleteComment(c.id)}>
-                          Delete
+                        <button className="del" disabled={busy || deletingId !== null} onClick={() => deleteComment(c.id)}>
+                          {deletingId === c.id ? "Deleting…" : "Delete"}
                         </button>
                       )}
                     </div>
@@ -454,7 +467,7 @@ export default function PageReader({
                       disabled={busy || !reply.trim()}
                       onClick={openThread.root.body ? submitReply : submitThreadBody}
                     >
-                      {openThread.root.body ? "Reply" : "Comment"}
+                      {busy ? "Sending…" : openThread.root.body ? "Reply" : "Comment"}
                     </button>
                   </div>
                 </div>
@@ -470,8 +483,8 @@ export default function PageReader({
           className="sel-toolbar show"
           style={{ left: toolbarPos.x - 55, top: toolbarPos.y - 44 }}
         >
-          <button onClick={commentOnSelection}>
-            <MessageSquarePlus size={13} /> Comment
+          <button onClick={commentOnSelection} disabled={busy}>
+            <MessageSquarePlus size={13} /> {busy ? "Saving…" : "Comment"}
           </button>
         </div>
       )}

@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { seedIfNeeded } from "./seed";
 import { htmlToText } from "./content";
+import { contentJsonFromHtml, isBlankDocJson } from "./doc-json";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -72,7 +73,8 @@ CREATE TABLE IF NOT EXISTS page_revisions (
   content_html TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK (status IN ('draft','published')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'editor' CHECK (source IN ('editor','api'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_page_revisions_page_created
@@ -102,6 +104,7 @@ function createDb() {
   database.exec(SCHEMA);
   migrateEmailToUsername(database);
   migrateGuestRole(database);
+  migrateRevisionSource(database);
   initializeSearch(database);
   initializeRevisions(database);
   return database;
@@ -208,6 +211,85 @@ function migrateGuestRole(database: DatabaseSync) {
   database.exec("PRAGMA foreign_keys = ON");
 }
 
+/** Existing databases predate the revision source tag. Idempotent. */
+function migrateRevisionSource(database: DatabaseSync) {
+  const cols = database.prepare("PRAGMA table_info(page_revisions)").all() as unknown as { name: string }[];
+  if (!cols.length || cols.some((column) => column.name === "source")) return;
+  database.exec("ALTER TABLE page_revisions ADD COLUMN source TEXT NOT NULL DEFAULT 'editor'");
+}
+
+const BLANK_DOC_SQL = `(content_json IS NULL OR TRIM(content_json) = '' OR TRIM(content_json) = '{}' OR TRIM(content_json) = 'null')`;
+
+/**
+ * One-off repair: HTML-only writes used to store content_json as "{}".
+ * Rebuild the editor document and bump updated_at so an open editor tab
+ * cannot autosave the blank document back over the page.
+ */
+function backfillBlankContentJson(database: DatabaseSync) {
+  const flag = database.prepare("SELECT value FROM settings WHERE key = 'content_json_backfill'").get() as
+    | { value: string }
+    | undefined;
+  if (flag?.value === "1") return;
+
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const again = database.prepare("SELECT value FROM settings WHERE key = 'content_json_backfill'").get() as
+      | { value: string }
+      | undefined;
+    if (again?.value === "1") {
+      database.exec("COMMIT");
+      return;
+    }
+
+    const pages = database
+      .prepare(`SELECT id, content_html, content_json FROM pages WHERE TRIM(COALESCE(content_html, '')) != '' AND ${BLANK_DOC_SQL}`)
+      .all() as unknown as Array<{ id: number; content_html: string; content_json: string }>;
+    const revisions = database
+      .prepare(
+        `SELECT id, content_html, content_json FROM page_revisions WHERE TRIM(COALESCE(content_html, '')) != '' AND ${BLANK_DOC_SQL}`
+      )
+      .all() as unknown as Array<{ id: number; content_html: string; content_json: string }>;
+
+    const updatePage = database.prepare(
+      "UPDATE pages SET content_json = ?, updated_at = datetime('now') WHERE id = ? AND " + BLANK_DOC_SQL
+    );
+    const updateRevision = database.prepare(
+      "UPDATE page_revisions SET content_json = ? WHERE id = ? AND " + BLANK_DOC_SQL
+    );
+    let failed = false;
+    for (const row of pages) {
+      if (!isBlankDocJson(row.content_json)) continue;
+      try {
+        updatePage.run(contentJsonFromHtml(row.content_html), row.id);
+      } catch (error) {
+        failed = true;
+        console.error(`content_json backfill failed for page ${row.id}`, error);
+      }
+    }
+    for (const row of revisions) {
+      if (!isBlankDocJson(row.content_json)) continue;
+      try {
+        updateRevision.run(contentJsonFromHtml(row.content_html), row.id);
+      } catch (error) {
+        failed = true;
+        console.error(`content_json backfill failed for revision ${row.id}`, error);
+      }
+    }
+    if (!failed) {
+      database
+        .prepare(
+          `INSERT INTO settings (key, value) VALUES ('content_json_backfill', '1')
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        )
+        .run();
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    try { database.exec("ROLLBACK"); } catch { /* no active transaction */ }
+    throw error;
+  }
+}
+
 function migrateEmailToUsername(database: DatabaseSync) {
   const cols = database.prepare("PRAGMA table_info(users)").all() as unknown as { name: string }[];
   const hasEmail = cols.some((c) => c.name === "email");
@@ -223,6 +305,9 @@ export const db: DatabaseSync = globalForDb.xkDb ?? createDb();
 if (!globalForDb.xkDb) {
   globalForDb.xkDb = db;
 }
+// Hot reload keeps the cached connection, so new migrations must run on every load.
+migrateRevisionSource(db);
+backfillBlankContentJson(db);
 
 /** Seed lazily so parallel workers don’t race on first write. */
 export function ensureSeeded(): void {
@@ -308,7 +393,32 @@ export interface PageRevisionRow {
   status: "draft" | "published";
   created_at: string;
   created_by: number | null;
+  /** editor autosave vs MCP/API write. Missing on rows read before the column existed. */
+  source?: "editor" | "api";
   editor_name?: string;
+}
+
+export const STALE_PAGE_MESSAGE = "This page was changed elsewhere, reload to see the latest";
+
+export type RevisionSource = "editor" | "api";
+
+export function commitPageUpdate(
+  pageId: number,
+  sets: string[],
+  values: Array<string | number | null>,
+  expectedUpdatedAt: string | null,
+): { status: "ok" } | { status: "missing" } | { status: "stale"; updated_at: string | null } {
+  const result = expectedUpdatedAt
+    ? db.prepare(`UPDATE pages SET ${sets.join(", ")} WHERE id = ? AND updated_at = ?`).run(...values, pageId, expectedUpdatedAt)
+    : db.prepare(`UPDATE pages SET ${sets.join(", ")} WHERE id = ?`).run(...values, pageId);
+  if (Number(result.changes) > 0) return { status: "ok" };
+  const row = db.prepare("SELECT updated_at FROM pages WHERE id = ?").get(pageId) as
+    | { updated_at: string }
+    | undefined;
+  if (!row) return { status: "missing" };
+  // SQLite reports zero changes when every assigned value is already current.
+  if (!expectedUpdatedAt || row.updated_at === expectedUpdatedAt) return { status: "ok" };
+  return { status: "stale", updated_at: row.updated_at };
 }
 
 export function syncPageSearch(pageId: number): void {
@@ -322,7 +432,12 @@ export function syncPageSearch(pageId: number): void {
   }
 }
 
-export function recordPageRevision(pageId: number, userId: number | null, force = false): void {
+export function recordPageRevision(
+  pageId: number,
+  userId: number | null,
+  force = false,
+  source: RevisionSource = "editor",
+): void {
   const page = db.prepare("SELECT * FROM pages WHERE id = ?").get(pageId) as unknown as PageRow | undefined;
   if (!page) return;
 
@@ -337,7 +452,11 @@ export function recordPageRevision(pageId: number, userId: number | null, force 
   const hasEarlierRevision = latest
     ? Boolean(db.prepare("SELECT 1 FROM page_revisions WHERE page_id = ? AND id != ? LIMIT 1").get(pageId, latest.id))
     : false;
-  const canCoalesce = !force && latest && hasEarlierRevision && latest.created_by === userId && latest.status === page.status &&
+  const latestSource = latest?.source || "editor";
+  // Collapse only consecutive editor autosaves. MCP/API writes always insert,
+  // and an editor save must not fold an API revision into itself.
+  const canCoalesce = source === "editor" && latestSource === "editor" && !force && latest && hasEarlierRevision &&
+    latest.created_by === userId && latest.status === page.status &&
     Date.now() - new Date(latest.created_at.replace(" ", "T") + "Z").getTime() < 5 * 60 * 1000;
   if (canCoalesce) {
     db.prepare(`UPDATE page_revisions SET title = ?, icon = ?, content_json = ?, content_html = ?,
@@ -346,9 +465,9 @@ export function recordPageRevision(pageId: number, userId: number | null, force 
     return;
   }
   db.prepare(`INSERT INTO page_revisions
-    (page_id, title, icon, content_json, content_html, status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(page.id, page.title, page.icon, page.content_json, page.content_html, page.status, userId);
+    (page_id, title, icon, content_json, content_html, status, created_by, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(page.id, page.title, page.icon, page.content_json, page.content_html, page.status, userId, source);
 }
 
 export function slugify(input: string): string {
