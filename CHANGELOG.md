@@ -14,6 +14,12 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.12] - 2026-10-30
+
+### Fixed
+
+- Search drops weak hits that share only a common word with the question.
+
 ## [1.7.11] - 2026-10-30
 
 ### Added

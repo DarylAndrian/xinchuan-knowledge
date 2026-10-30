@@ -115,11 +115,28 @@ export function chunksForPage(html: string): SearchChunk[] {
   return [{ heading: "", anchor: "intro", text: "" }];
 }
 
-export function termCoverage(text: string, terms: string[]): number {
+export function termHits(text: string, terms: string[]): number {
   if (terms.length === 0) return 0;
   const lower = text.toLowerCase();
-  const hits = terms.filter((term) => lower.includes(term.toLowerCase())).length;
-  return hits / terms.length;
+  return terms.filter((term) => lower.includes(term.toLowerCase())).length;
+}
+
+export function termCoverage(text: string, terms: string[]): number {
+  if (terms.length === 0) return 0;
+  return termHits(text, terms) / terms.length;
+}
+
+/**
+ * Drop a hit that only shares a common word with the question.
+ * It must match at least half of the meaningful terms (rounded up) and score
+ * at least 60. One shared word scores about 26–51; real matches score about 80–106.
+ */
+export const MIN_SEARCH_SCORE = 60;
+
+export function keepSearchHit(matched: number, termCount: number, score: number): boolean {
+  if (termCount <= 0) return false;
+  const needed = Math.ceil(termCount / 2);
+  return matched >= needed && score >= MIN_SEARCH_SCORE;
 }
 
 /** Snippet from the matching section, wide enough to keep a nearby amount or sentence. */

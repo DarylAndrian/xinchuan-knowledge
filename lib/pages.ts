@@ -1,5 +1,5 @@
 import { db, CollectionRow, PageRow } from "./db";
-import { clampSearchLimit, contentTerms, ftsMatchQuery, snippetAround, termCoverage } from "./search-index";
+import { clampSearchLimit, contentTerms, ftsMatchQuery, keepSearchHit, snippetAround, termHits } from "./search-index";
 
 export interface PageWithEditor extends PageRow {
   editor_name?: string;
@@ -172,8 +172,8 @@ interface SearchRow {
 }
 
 /**
- * Published pages only. A query matches when any keyword hits, stop words are
- * ignored, and each hit is the best section on that page (at most two per page).
+ * Published pages only. Stop words are ignored. A hit must match at least half
+ * of the remaining words, and at most two sections per page are returned.
  */
 export function searchPages(q: string, options: SearchOptions = {}): SearchHit[] {
   const terms = contentTerms(q);
@@ -207,16 +207,18 @@ export function searchPages(q: string, options: SearchOptions = {}): SearchHit[]
 
   const pagesByCollection = new Map<number, PageRow[]>();
   const ranked = rows.map((row) => {
-    const coverage = termCoverage(`${row.title}\n${row.section_heading}\n${row.section_text}`, terms);
+    const matched = termHits(`${row.title}\n${row.section_heading}\n${row.section_text}`, terms);
+    const coverage = terms.length ? matched / terms.length : 0;
     const magnitude = Number.isFinite(row.raw_rank) ? Math.abs(row.raw_rank) : 0;
     const score = Math.round((coverage * 100 + magnitude) * 1000) / 1000;
-    return { row, score };
+    return { row, score, matched };
   });
   ranked.sort((a, b) => b.score - a.score || b.row.updated_at.localeCompare(a.row.updated_at));
 
   const hits: SearchHit[] = [];
   const perPage = new Map<number, number>();
-  for (const { row, score } of ranked) {
+  for (const { row, score, matched } of ranked) {
+    if (!keepSearchHit(matched, terms.length, score)) continue;
     const seen = perPage.get(row.id) ?? 0;
     if (seen >= 2) continue;
     perPage.set(row.id, seen + 1);

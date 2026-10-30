@@ -74,6 +74,7 @@ addPage(
 addPage(taxiId, "HOKI Taxi Airport", "<h2>Airport fee</h2><p>The airport fee is NT$100.</p>");
 addPage(taxiId, "Dispatch notes", "<h2>Calls</h2><p>A passenger called the desk.</p>");
 addPage(probeId, "Staff Handbook", "<p>employee annual leave policy</p>", "draft");
+addPage(probeId, "Post-Release Feature Queue", "<h2>Privacy</h2><p>The privacy policy covers how account data is stored.</p>");
 
 for (let i = 1; i <= 22; i++) {
   addPage(probeId, `Probe ${i}`, `<p>limitprobe ${i}</p>`);
@@ -191,8 +192,9 @@ describe("wiki search", { concurrency: false }, () => {
     assert.ok(hits.every((hit) => hit.title === "Many Sections"));
   });
 
-  test("a query that is not in the wiki returns nothing", () => {
-    assert.deepEqual(searchPages("employee annual leave policy"), []);
+  test("a query that only shares a common word returns nothing", () => {
+    const hits = searchPages("employee annual leave policy");
+    assert.deepEqual(hits, []);
   });
 
   test("saving or publishing reindexes, and a full rebuild restores the index", () => {
