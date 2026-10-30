@@ -5,7 +5,7 @@ import path from "node:path";
 import { after, describe, test } from "node:test";
 import { htmlToText } from "../lib/content.ts";
 import { extractTocFromHtml } from "../lib/headings.ts";
-import { buildSearchChunks } from "../lib/search-index.ts";
+import { buildSearchChunks, keepSearchHit, MIN_SEARCH_SCORE, NOISE_SCORE_FLOOR } from "../lib/search-index.ts";
 
 const dataDir = mkdtempSync(path.join(tmpdir(), "xk-search-"));
 process.env.XINCHUAN_DATA_DIR = dataDir;
@@ -88,6 +88,18 @@ addPage(
    <h2>Three</h2><p>zebraquota gamma</p>
    <h2>Four</h2><p>zebraquota delta</p>`
 );
+
+// Fixtures shaped like the live wiki: the page that answers the question does
+// NOT restate it, so only two of the five query words appear ("taxi" and
+// "reservation"; "cancelled" does not match the query word "cancels"). This is
+// the case the old 60-point cutoff dropped while reporting the query empty.
+const dispatchId = addCollection("Dispatch Rules");
+addPage(
+  dispatchId,
+  "Ride Cancellation Rule",
+  "<h2>Cancellation</h2><p>If a ride is cancelled the taxi reservation is released and no driver is dispatched.</p>"
+);
+addPage(dispatchId, "Driver Roster", "<h2>Roster</h2><p>Drivers sign up at the depot each morning.</p>");
 
 function titles(query: string, options?: { collection?: string | number; limit?: number }) {
   return searchPages(query, options).map((hit) => hit.title);
@@ -195,6 +207,46 @@ describe("wiki search", { concurrency: false }, () => {
   test("a query that only shares a common word returns nothing", () => {
     const hits = searchPages("employee annual leave policy");
     assert.deepEqual(hits, []);
+  });
+
+  test("a natural-language question keeps a page that only matches two of its words", () => {
+    const hits = searchPages("what happens if a passenger cancels a taxi reservation");
+    const found = hits.slice(0, 3).map((hit) => hit.title);
+    assert.ok(
+      found.includes("Ride Cancellation Rule"),
+      `expected Ride Cancellation Rule in the top 3, got ${JSON.stringify(found)}`
+    );
+    // The noise around it must still be filtered out.
+    assert.ok(hits.every((hit) => hit.score >= NOISE_SCORE_FLOOR));
+  });
+
+  test("the cutoff separates real matches from accidental overlaps", () => {
+    // Bands measured on the production wiki (2026-10-30): one shared word
+    // scores 21-28, a real match 50-106.
+    assert.equal(keepSearchHit(2, 5, 49.9), true, "taxi answer must survive");
+    assert.equal(keepSearchHit(1, 5, 24.2), false, "unrelated taxi section");
+    assert.equal(keepSearchHit(1, 5, 23.0), false);
+    assert.equal(keepSearchHit(1, 4, 28.1), false, "privacy-policy noise");
+    assert.equal(keepSearchHit(1, 4, 26.8), false);
+    assert.equal(keepSearchHit(1, 1, 103.9), true, "ECPay");
+    assert.equal(keepSearchHit(2, 2, 102.8), true, "HOKI Go");
+    assert.equal(keepSearchHit(3, 4, 81.8), true, "convenience store");
+    assert.equal(keepSearchHit(2, 2, 105.7), true, "delivery fee");
+    assert.equal(keepSearchHit(0, 3, 90.0), false, "no word overlap can never pass");
+    assert.equal(keepSearchHit(2, 5, 0), false, "no score can never pass");
+  });
+
+  test("below the noise floor nothing survives, however many words it shares", () => {
+    assert.equal(keepSearchHit(3, 4, NOISE_SCORE_FLOOR - 0.1), false);
+    assert.equal(keepSearchHit(1, 4, NOISE_SCORE_FLOOR - 0.1), false);
+    assert.equal(keepSearchHit(0, 0, 999), false);
+  });
+
+  test("between the two floors a single shared word is not enough", () => {
+    const between = MIN_SEARCH_SCORE - 0.1;
+    assert.equal(keepSearchHit(1, 2, between), false, "one of two words is just one word");
+    assert.equal(keepSearchHit(1, 5, between), false);
+    assert.equal(keepSearchHit(2, 5, between), true, "two of five is the taxi case");
   });
 
   test("saving or publishing reindexes, and a full rebuild restores the index", () => {

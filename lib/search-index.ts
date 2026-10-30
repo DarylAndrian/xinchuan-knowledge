@@ -128,15 +128,31 @@ export function termCoverage(text: string, terms: string[]): number {
 
 /**
  * Drop a hit that only shares a common word with the question.
- * It must match at least half of the meaningful terms (rounded up) and score
- * at least 60. One shared word scores about 26–51; real matches score about 80–106.
+ *
+ * One shared word scores about 21–28; a real keyword match scores about
+ * 50–106. A single fixed cutoff cannot separate them: "what happens if a
+ * passenger cancels a taxi reservation" genuinely matches
+ * "General Rule - HOKI Taxi" at ~50 (only 2 of 5 query words appear), which
+ * is far above the ~28 ceiling of accidental overlaps but below a 60 floor.
+ *
+ * Rule, applied in order:
+ *   1. below NOISE_SCORE_FLOOR the hit is always dropped - accidental
+ *      overlaps never reach this, so the floor is safe to sit low;
+ *   2. at or above MIN_SEARCH_SCORE the hit is kept - a strong BM25 signal;
+ *   3. otherwise keep it only when the wording genuinely overlaps, i.e. the
+ *      hit matches at least STRONG_TERM_SHARE of the meaningful query words
+ *      (never fewer than two, so a single shared word cannot qualify).
  */
-export const MIN_SEARCH_SCORE = 60;
+export const MIN_SEARCH_SCORE = 40;
+export const NOISE_SCORE_FLOOR = 32;
+export const STRONG_TERM_SHARE = 0.4;
 
 export function keepSearchHit(matched: number, termCount: number, score: number): boolean {
-  if (termCount <= 0) return false;
-  const needed = Math.ceil(termCount / 2);
-  return matched >= needed && score >= MIN_SEARCH_SCORE;
+  if (termCount <= 0 || matched < 1) return false;
+  if (score < NOISE_SCORE_FLOOR) return false;
+  if (score >= MIN_SEARCH_SCORE) return true;
+  const strong = Math.max(2, Math.ceil(termCount * STRONG_TERM_SHARE));
+  return matched >= strong;
 }
 
 /** Snippet from the matching section, wide enough to keep a nearby amount or sentence. */
