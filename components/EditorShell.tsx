@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import {
   Bold, Italic, Strikethrough, Heading1, Heading2, Heading3,
@@ -44,6 +45,13 @@ type SaveState = "saved" | "dirty" | "saving";
 
 const STALE_PAGE_MESSAGE = "This page was changed elsewhere, reload to see the latest";
 
+function parseEditorPageId(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const id = Number(raw);
+  return id > 0 ? id : null;
+}
+
 function editorContentFromPage(page: Pick<PageRow, "content_json" | "content_html">): object | string {
   const raw = (page.content_json || "").trim();
   if (raw && raw !== "{}" && raw !== "null") {
@@ -82,9 +90,12 @@ type RevisionSummary = {
 };
 
 export default function EditorShell({ collections: initialCollections, pages: initialPages, userId, isSuperadmin = false }: Props) {
+  const router = useRouter();
+  const params = useParams();
+  const routeId = parseEditorPageId(params.id);
   const [collections, setCollections] = useState(initialCollections);
   const [pages, setPages] = useState(initialPages);
-  const [selectedId, setSelectedId] = useState<number | null>(initialPages[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<number | null>(routeId);
   const [title, setTitle] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -326,6 +337,23 @@ export default function EditorShell({ collections: initialCollections, pages: in
   performSaveRef.current = performSave;
   saveNowRef.current = saveNow;
 
+  // The URL is /editor/<page id>. The shell stays mounted; this follows the route.
+  useEffect(() => {
+    if (routeId === selectedIdRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      await saveNowRef.current();
+      if (cancelled) return;
+      setSelectedId(routeId);
+      selectedIdRef.current = routeId;
+      setOpenMenuId(null);
+      setTreeOpen(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeId]);
+
   async function patchPage(pageId: number, body: Record<string, unknown>): Promise<PatchResult> {
     let result: PatchResult = { ok: false, stale: false, error: "Could not save." };
     await enqueueWrite(async () => {
@@ -395,13 +423,25 @@ export default function EditorShell({ collections: initialCollections, pages: in
     await saveNow();
   }
 
+  /** Point the address bar at /editor/<id> without waiting for a slug path. */
+  function openEditorPage(id: number | null) {
+    setSelectedId(id);
+    selectedIdRef.current = id;
+    setOpenMenuId(null);
+    setTreeOpen(false);
+    router.push(id == null ? "/editor" : `/editor/${id}`, { scroll: false });
+  }
+
   /** Switch pages only after the current page's pending save has landed,
       so a late timer can never write one page's content into another. */
   async function selectPage(id: number | null) {
+    if (id === selectedIdRef.current) {
+      setOpenMenuId(null);
+      setTreeOpen(false);
+      return;
+    }
     await flushSave();
-    setOpenMenuId(null);
-    setTreeOpen(false);
-    setSelectedId(id);
+    openEditorPage(id);
   }
 
   // Don't lose the last <900ms of typing when leaving the editor.
@@ -567,7 +607,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
       setPages((ps) => ps.filter((p) => p.collection_id !== c.id));
       if (selected && selected.collection_id === c.id) {
         const remaining = pages.filter((p) => p.collection_id !== c.id);
-        setSelectedId(remaining[0]?.id ?? null);
+        openEditorPage(remaining[0]?.id ?? null);
       }
       if (editingCollectionId === c.id) setEditingCollectionId(null);
     });
@@ -589,7 +629,7 @@ export default function EditorShell({ collections: initialCollections, pages: in
       await fetch(`/api/pages/${selected.id}`, { method: "DELETE" });
       const remaining = pages.filter((p) => p.id !== selected.id && p.parent_id !== selected.id);
       setPages(remaining);
-      setSelectedId(remaining[0]?.id ?? null);
+      openEditorPage(remaining[0]?.id ?? null);
     });
   }
 
@@ -938,18 +978,20 @@ export default function EditorShell({ collections: initialCollections, pages: in
           )}
           <nav className="tree">
             {(treeByCollection.get(c.id) || []).map(({ page, depth }) => (
-              <button
+              <Link
                 key={page.id}
-                onClick={() => selectPage(page.id)}
-                className={`${depth === 1 ? "lvl2" : depth >= 2 ? "lvl3" : ""} ${page.id === selectedId ? "active" : ""}`}
+                href={`/editor/${page.id}`}
+                scroll={false}
+                onClick={() => setTreeOpen(false)}
+                className={`${depth === 1 ? "lvl2" : depth >= 2 ? "lvl3" : ""} ${page.id === (routeId ?? selectedId) ? "active" : ""}`}
               >
                 <span className="truncate">{page.title}</span>
                 {page.status === "draft" && (
-                  <span className="ml-auto text-[10px]" style={{ color: page.id === selectedId ? "var(--canvas)" : "var(--brass)" }}>
+                  <span className="ml-auto text-[10px]" style={{ color: page.id === (routeId ?? selectedId) ? "var(--canvas)" : "var(--brass)" }}>
                     draft
                   </span>
                 )}
-              </button>
+              </Link>
             ))}
           </nav>
         </div>
@@ -1416,7 +1458,9 @@ export default function EditorShell({ collections: initialCollections, pages: in
             </div>
           ) : (
             <div className="editor-col text-[14px] text-ink-muted">
-              Select a page on the left, or create a new one with the <Plus size={12} style={{ display: "inline" }} /> button.
+              {routeId != null && !pages.some((p) => p.id === routeId)
+                ? "That edit link does not match a page. Pick one from the sidebar."
+                : <>Select a page on the left, or create a new one with the <Plus size={12} style={{ display: "inline" }} /> button.</>}
             </div>
           )}
         </main>

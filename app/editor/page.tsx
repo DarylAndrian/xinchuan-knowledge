@@ -1,21 +1,17 @@
 import { redirect } from "next/navigation";
 import { getSessionUser, isEditor } from "@/lib/auth";
-import { db, CollectionRow, PageRow } from "@/lib/db";
-import EditorShell from "@/components/EditorShell";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default async function EditorPage() {
+export default async function EditorIndexPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (!isEditor(user)) redirect("/");
 
-  const collections = (
-    db.prepare("SELECT * FROM collections ORDER BY position, name").all() as unknown as CollectionRow[]
-  ).map((c) => ({ ...c }));
-  const pages = (
-    db.prepare("SELECT * FROM pages ORDER BY collection_id, position, title").all() as unknown as PageRow[]
-  ).map((p) => ({ ...p }));
-
-  return <EditorShell collections={collections} pages={pages} userId={user.id} isSuperadmin={user.role === "superadmin"} />;
+  const first = db
+    .prepare("SELECT id FROM pages ORDER BY collection_id, position, title LIMIT 1")
+    .get() as { id: number } | undefined;
+  if (first) redirect(`/editor/${first.id}`);
+  return null;
 }

@@ -14,6 +14,16 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.10] - 2026-10-30
+
+### Added
+
+- Editor pages have their own address (/editor/id), and catalogue pages link there with Edit
+
+### Changed
+
+- The catalogue sidebar, article, and outline each scroll on their own
+
 ## [1.7.9] - 2026-10-29
 
 ### Added

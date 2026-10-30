@@ -68,6 +68,16 @@ function jumpToHeading(id: string) {
   history.replaceState(null, "", `#${id}`);
 }
 
+function scrollBox(start: HTMLElement | null): HTMLElement | Window {
+  let node = start?.parentElement ?? null;
+  while (node) {
+    const y = getComputedStyle(node).overflowY;
+    if (y === "auto" || y === "scroll") return node;
+    node = node.parentElement;
+  }
+  return window;
+}
+
 export default function PageReader({
   html,
   pageId,
@@ -117,6 +127,9 @@ export default function PageReader({
     if (hash && items.some((item) => item.id === hash)) {
       requestAnimationFrame(() => jumpToHeading(hash));
       setActiveHeading(hash);
+    } else {
+      const box = scrollBox(el);
+      if (box instanceof HTMLElement) box.scrollTop = 0;
     }
 
     // wrap comment anchors
@@ -152,8 +165,9 @@ export default function PageReader({
   /* ----- highlight the heading currently in view ----- */
   useEffect(() => {
     if (toc.length === 0) return;
+    const box = scrollBox(containerRef.current);
+    const offset = box === window ? 88 : 24;
     const onScroll = () => {
-      const offset = 88;
       let current = toc[0].id;
       for (const item of toc) {
         const heading = document.getElementById(item.id);
@@ -162,8 +176,8 @@ export default function PageReader({
       setActiveHeading(current);
     };
     onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    box.addEventListener("scroll", onScroll, { passive: true });
+    return () => box.removeEventListener("scroll", onScroll);
   }, [toc]);
 
   function wrapQuote(container: HTMLElement, quote: string, cid: number, idx: number): boolean {
@@ -344,8 +358,7 @@ export default function PageReader({
   }
 
   return (
-    <>
-      {/* article column — direct child of .wiki-layout grid */}
+    <div className="wiki-stage">
       <main className="wiki-main">
         <div className="article">
           {children}
@@ -476,7 +489,6 @@ export default function PageReader({
           )}
         </aside>
 
-      {/* floating selection toolbar */}
       {canComment && toolbarPos && (
         <div
           ref={toolbarRef}
@@ -488,7 +500,7 @@ export default function PageReader({
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

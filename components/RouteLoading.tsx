@@ -47,13 +47,7 @@ export function HomeLoading() {
 
 export function CatalogueLoading() {
   return (
-    <div className="wiki-layout" aria-busy="true" data-route-loading="">
-      <aside className="wiki-sidebar max-[800px]:hidden">
-        <Bone className="mb-4 h-3 w-24" />
-        {Array.from({ length: 7 }, (_, i) => (
-          <Bone key={i} className="mb-2 h-4" style={{ width: `${72 - (i % 3) * 12}%` }} />
-        ))}
-      </aside>
+    <div className="wiki-stage" aria-busy="true" data-route-loading="">
       <main className="wiki-main">
         <div className="article w-full">
           <Status label="Loading catalogue" />

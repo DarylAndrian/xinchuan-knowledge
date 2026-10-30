@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { MessageSquare } from "lucide-react";
-import CatalogueSidebar from "@/components/CatalogueSidebar";
+import { MessageSquare, Pencil } from "lucide-react";
 import PageReader from "@/components/PageReader";
 import { isEditor, canComment, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -52,9 +51,6 @@ export default async function CataloguePathPage({
   const canModerate = editor;
 
   return (
-    <div className="wiki-layout">
-      <CatalogueSidebar activeHref={`/catalogue/${path.join("/")}`} user={user} />
-
       <PageReader
         html={sanitizeWikiHtml(page.content_html)}
         pageId={page.id}
@@ -88,8 +84,12 @@ export default async function CataloguePathPage({
           <span className="flex items-center gap-1.5">
             <MessageSquare size={12} /> {threadCount} comment{threadCount === 1 ? "" : "s"}
           </span>
+          {editor && (
+            <Link href={`/editor/${page.id}`} className="ml-auto flex items-center gap-1.5 text-moss hover:text-moss-hover">
+              <Pencil size={12} /> Edit
+            </Link>
+          )}
         </div>
       </PageReader>
-    </div>
   );
 }
