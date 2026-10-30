@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  db, slugify, PageRow, recordPageRevision, syncPageSearch, commitPageUpdate, STALE_PAGE_MESSAGE, RevisionSource,
+  db, slugify, PageRow, recordPageRevision, syncPageSearch, removePageSearch, commitPageUpdate, STALE_PAGE_MESSAGE, RevisionSource,
 } from "@/lib/db";
 import { getSessionUser, isEditor } from "@/lib/auth";
 import { sanitizeWikiHtml } from "@/lib/content";
@@ -167,8 +167,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     SELECT id FROM pages WHERE id = ?
     UNION ALL SELECT p.id FROM pages p JOIN descendants d ON p.parent_id = d.id
   ) SELECT id FROM descendants`).all(pageId) as unknown as Array<{ id: number }>;
-  const removeSearch = db.prepare("DELETE FROM page_search WHERE page_id = ?");
-  for (const row of ids) removeSearch.run(row.id);
+  for (const row of ids) removePageSearch(row.id);
   db.prepare("DELETE FROM pages WHERE id = ?").run(pageId);
   return NextResponse.json({ ok: true });
 }

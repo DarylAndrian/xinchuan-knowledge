@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListTree, MessageSquarePlus, X } from "lucide-react";
 import type { CommentWithAuthor } from "@/lib/comments";
+import { extractTocFromHtml, type TocItem } from "@/lib/headings";
 
 const OUTLINE_HIDDEN_KEY = "wiki-outline-hidden";
 
@@ -14,51 +15,6 @@ interface Props {
   canModerate: boolean;
   currentUserId: number | null;
   children?: React.ReactNode;
-}
-
-interface TocItem {
-  id: string;
-  text: string;
-  level: number;
-}
-
-function slugifyHeading(text: string, index: number) {
-  const base = text
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-$/g, "")
-    .slice(0, 48);
-  return `${base || "heading"}-${index}`;
-}
-
-function headingPlainText(inner: string) {
-  return inner
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .trim();
-}
-
-function extractTocFromHtml(html: string): TocItem[] {
-  const items: TocItem[] = [];
-  const used = new Set<string>();
-  const re = /<h([1-3])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi;
-  let match: RegExpExecArray | null;
-  let index = 0;
-  while ((match = re.exec(html))) {
-    const text = headingPlainText(match[2]);
-    let id = slugifyHeading(text, index);
-    if (used.has(id)) id = `${id}-${index}`;
-    used.add(id);
-    items.push({ id, text, level: Number(match[1]) });
-    index += 1;
-  }
-  return items;
 }
 
 function jumpToHeading(id: string) {
@@ -386,7 +342,7 @@ export default function PageReader({
               )}
             </div>
           )}
-          <div ref={containerRef} className="wiki-content" />
+          <div ref={containerRef} id="intro" className="wiki-content" />
         </div>
       </main>
 

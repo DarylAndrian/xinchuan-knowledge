@@ -14,7 +14,7 @@ Current version: **1.7.8** — see [CHANGELOG.md](./CHANGELOG.md).
 - **Light and dark themes** — follows the system preference on first visit, supports a persistent manual toggle in the top bar, and themes native controls and editor content consistently.
 - **Roles** — `superadmin` > `admin` > `commentator` > `guest`. Editors manage content; commentators comment; guests may only view published pages; visitors without an account are sent to sign-in.
 - **Superadmin panel** — reached from the profile menu (avatar, top right): sticky section navigation; user management with compact action menus (create, change role including Guest, suspend, delete with last-superadmin protection); collection management (rename, description, searchable [Lucide](https://lucide.dev/icons) icon picker including Food and Taxi, delete); access tokens (create named PATs with scopes and optional expiry, copy once, revoke); and site settings (site name, open registration, comment approval). Collections can also be managed from the Editor sidebar via the `...` action menu. Guests cannot open `/admin`.
-- **Full-text search** — SQLite FTS5 search over published titles and article text, with relevance ranking, prefix matching, and context snippets.
+- **Full-text search** — SQLite FTS5 over published pages, split into heading sections. A query can match any keyword (stop words are ignored), results are ranked by relevance, and search can be limited to one collection.
 - **Read-only WebMCP** — compatible agents in a signed-in browser session can search, read a published page, list collections, and inspect recent updates. There are no write tools and no PAT.
 - **Personal access tokens + full MCP** — superadmins mint named GitHub-style PATs with selectable scopes from `/admin` → Access Tokens. External agents authenticate to `POST /api/mcp` with `Authorization: Bearer xk_pat_…` and get the full tool surface (read/write content, comments, revisions, collections, users, settings) capped by the token’s scopes and the owner’s role.
 - **Hardened API boundary** — pages and `/api/public/*` require a session cookie; authoring APIs require editor roles. Rich text is allowlist-sanitized, browser mutations are same-origin checked, sign-in attempts are throttled, session cookies are secure in production, and baseline security headers are enabled. See [SECURITY.md](./SECURITY.md).
@@ -114,7 +114,7 @@ These read endpoints require a signed-in session (the same cookie as the website
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/public/search?q=...` | FTS5 search over published pages |
+| `GET /api/public/search?q=...&collection=...&limit=5` | Section search over published pages. `collection` is a name, slug, or id. `limit` defaults to 5 and caps at 20. Each hit includes a section heading, anchor, snippet, and score. |
 | `GET /api/public/pages/:id` | Read one published page as plain text |
 | `GET /api/public/collections` | List collections and published page counts |
 | `GET /api/public/recent?limit=10` | List recent published updates (maximum 20) |

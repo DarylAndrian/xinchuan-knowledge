@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import {
-  db, PageRow, CollectionRow, UserRow, Role, recordPageRevision, syncPageSearch, slugify,
+  db, PageRow, CollectionRow, UserRow, Role, recordPageRevision, syncPageSearch, removePageSearch, slugify,
   commitPageUpdate, STALE_PAGE_MESSAGE,
 } from "./db";
 import { htmlToText, sanitizeWikiHtml } from "./content";
 import { contentJsonFromHtml, providedContentJson } from "./doc-json";
 import { getComments } from "./comments";
-import { getCollectionPages, getRecentPages, hrefForPage, searchPages } from "./pages";
+import { getCollectionPages, getRecentPages, hrefForPage, searchPages, toPublicSearchHit } from "./pages";
 import { Scope, TokenPrincipal, hasScope } from "./tokens";
 import { getSetting, setSetting } from "./db";
 import bcrypt from "bcryptjs";
@@ -162,25 +162,30 @@ function canCommentAs(user: TokenPrincipal["user"]): boolean {
 const tools: ToolDef[] = [
   {
     name: "search_xinchuan_wiki",
-    description: "Search published Xinchuan wiki pages by keyword.",
+    description:
+      "Search published Xinchuan wiki pages. Matches any keyword (stop words ignored) and returns the best matching section with its heading, snippet, anchor link, and score. Optional collection (name, slug, or id) and limit (default 5, max 20).",
     scope: "read:content",
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string", minLength: 1, maxLength: 200 } },
+      properties: {
+        query: { type: "string", minLength: 1, maxLength: 200 },
+        collection: {
+          description: "Optional collection name, slug, or numeric id.",
+          anyOf: [{ type: "string", minLength: 1, maxLength: 200 }, { type: "integer", minimum: 1 }],
+        },
+        limit: { type: "integer", minimum: 1, maximum: 20, default: 5 },
+      },
       required: ["query"],
       additionalProperties: false,
     },
     handler: (_p, args) => {
       const query = str(args.query).trim().slice(0, 200);
       if (!query) return { query, results: [] };
-      const results = searchPages(query).map((page) => ({
-        id: page.id,
-        title: page.title,
-        collection: page.collection_name,
-        href: hrefForPage(page.collection_slug, getCollectionPages(page.collection_id), page.id),
-        snippet: page.search_snippet || "",
-        updated_at: page.updated_at,
-      }));
+      const collection = typeof args.collection === "string" || typeof args.collection === "number"
+        ? args.collection
+        : undefined;
+      const limit = args.limit == null ? undefined : num(args.limit, 5);
+      const results = searchPages(query, { collection, limit }).map(toPublicSearchHit);
       return { query, results };
     },
   },
@@ -477,8 +482,7 @@ const tools: ToolDef[] = [
         )
         .all(pageId) as unknown as Array<{ id: number }>;
       if (ids.length === 0) throw new McpToolError("Page not found", -32001);
-      const removeSearch = db.prepare("DELETE FROM page_search WHERE page_id = ?");
-      for (const row of ids) removeSearch.run(row.id);
+      for (const row of ids) removePageSearch(row.id);
       db.prepare("DELETE FROM pages WHERE id = ?").run(pageId);
       return { ok: true, deleted_ids: ids.map((r) => r.id) };
     },

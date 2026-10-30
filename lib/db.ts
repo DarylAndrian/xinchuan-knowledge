@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "path";
 import fs from "fs";
 import { seedIfNeeded } from "./seed";
-import { htmlToText } from "./content";
+import { chunksForPage } from "./search-index";
 import { contentJsonFromHtml, isBlankDocJson } from "./doc-json";
 
 const SCHEMA = `
@@ -93,7 +93,12 @@ CREATE TABLE IF NOT EXISTS access_tokens (
 );
 `;
 
-const DATA_DIR = path.join(process.cwd(), "data");
+/** Tests set XINCHUAN_DATA_DIR so they never open the wiki database. */
+const DATA_DIR = process.env.XINCHUAN_DATA_DIR
+  ? path.resolve(process.env.XINCHUAN_DATA_DIR)
+  : path.join(process.cwd(), "data");
+
+const SEARCH_INDEX_VERSION = "3";
 
 function createDb() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -111,26 +116,35 @@ function createDb() {
 }
 
 function initializeSearch(database: DatabaseSync) {
-  database.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS page_search USING fts5(
-    page_id UNINDEXED,
-    title,
-    content,
-    tokenize = 'unicode61 remove_diacritics 2'
-  );`);
   // Build workers can open the same database concurrently. Serialize the
   // backfill so two workers can never insert the published corpus twice.
   database.exec("BEGIN IMMEDIATE");
   try {
-    const count = database.prepare(
-      "SELECT COUNT(*) AS n, COUNT(DISTINCT page_id) AS unique_n FROM page_search"
-    ).get() as unknown as { n: number; unique_n: number };
     const version = database.prepare("SELECT value FROM settings WHERE key = 'fts_schema_version'").get() as
       | { value: string }
       | undefined;
-    if (version?.value !== "2" || count.n === 0 || count.n !== count.unique_n) {
+    const recreate = version?.value !== SEARCH_INDEX_VERSION;
+    if (recreate) database.exec("DROP TABLE IF EXISTS page_search");
+    database.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS page_search USING fts5(
+      page_id UNINDEXED,
+      anchor UNINDEXED,
+      heading,
+      title,
+      body,
+      tokenize = 'unicode61 remove_diacritics 2'
+    );`);
+    const indexed = database.prepare("SELECT COUNT(DISTINCT page_id) AS n FROM page_search").get() as unknown as {
+      n: number;
+    };
+    const published = database.prepare(
+      "SELECT COUNT(*) AS n FROM pages WHERE status = 'published'"
+    ).get() as unknown as { n: number };
+    if (recreate || indexed.n !== published.n) {
       rebuildSearchIndex(database);
-      database.prepare(`INSERT INTO settings (key, value) VALUES ('fts_schema_version', '2')
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
+      database.prepare(
+        `INSERT INTO settings (key, value) VALUES ('fts_schema_version', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(SEARCH_INDEX_VERSION);
     }
     database.exec("COMMIT");
   } catch (error) {
@@ -155,13 +169,38 @@ function initializeRevisions(database: DatabaseSync) {
   }
 }
 
+interface SearchPageSource {
+  id: number;
+  title: string;
+  content_html: string;
+  status: string;
+}
+
+function writePageSearch(database: DatabaseSync, page: SearchPageSource) {
+  database.prepare("DELETE FROM page_search WHERE page_id = ?").run(String(page.id));
+  if (page.status !== "published") return;
+  const insert = database.prepare(
+    "INSERT INTO page_search (page_id, anchor, heading, title, body) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const chunk of chunksForPage(page.content_html)) {
+    insert.run(String(page.id), chunk.anchor, chunk.heading, page.title, chunk.text);
+  }
+}
+
 function rebuildSearchIndex(database: DatabaseSync) {
   database.exec("DELETE FROM page_search;");
   const rows = database
-    .prepare("SELECT id, title, content_html FROM pages WHERE status = 'published'")
-    .all() as unknown as Array<{ id: number; title: string; content_html: string }>;
-  const insert = database.prepare("INSERT INTO page_search (page_id, title, content) VALUES (?, ?, ?)");
-  for (const row of rows) insert.run(row.id, row.title, htmlToText(row.content_html));
+    .prepare("SELECT id, title, content_html, status FROM pages WHERE status = 'published'")
+    .all() as unknown as SearchPageSource[];
+  for (const row of rows) writePageSearch(database, row);
+}
+
+export function ensureSearchIndex(): void {
+  initializeSearch(db);
+}
+
+export function removePageSearch(pageId: number): void {
+  db.prepare("DELETE FROM page_search WHERE page_id = ?").run(String(pageId));
 }
 
 /**
@@ -422,14 +461,14 @@ export function commitPageUpdate(
 }
 
 export function syncPageSearch(pageId: number): void {
-  db.prepare("DELETE FROM page_search WHERE page_id = ?").run(pageId);
   const page = db.prepare("SELECT id, title, content_html, status FROM pages WHERE id = ?").get(pageId) as unknown as
-    | { id: number; title: string; content_html: string; status: string }
+    | SearchPageSource
     | undefined;
-  if (page?.status === "published") {
-    db.prepare("INSERT INTO page_search (page_id, title, content) VALUES (?, ?, ?)")
-      .run(page.id, page.title, htmlToText(page.content_html));
+  if (!page) {
+    removePageSearch(pageId);
+    return;
   }
+  writePageSearch(db, page);
 }
 
 export function recordPageRevision(

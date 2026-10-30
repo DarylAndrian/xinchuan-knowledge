@@ -35,15 +35,27 @@ export default function WebMCPTools() {
     const tools: ToolDefinition[] = [
       {
         name: "search_xinchuan_wiki",
-        description: "Search published Xinchuan wiki pages (requires a signed-in session).",
+        description: "Search published Xinchuan wiki pages and return the best matching section (requires a signed-in session). Optional collection name, slug, or id, and limit (default 5, max 20).",
         inputSchema: {
           type: "object",
-          properties: { query: { type: "string", minLength: 1, maxLength: 200 } },
+          properties: {
+            query: { type: "string", minLength: 1, maxLength: 200 },
+            collection: {
+              description: "Optional collection name, slug, or numeric id.",
+              anyOf: [{ type: "string", minLength: 1, maxLength: 200 }, { type: "integer", minimum: 1 }],
+            },
+            limit: { type: "integer", minimum: 1, maximum: 20, default: 5 },
+          },
           required: ["query"],
           additionalProperties: false,
         },
         annotations: { readOnlyHint: true },
-        execute: async ({ query }) => getJson(`/api/public/search?q=${encodeURIComponent(String(query))}`),
+        execute: async ({ query, collection, limit }) => {
+          const params = new URLSearchParams({ q: String(query) });
+          if (collection != null && String(collection).trim()) params.set("collection", String(collection));
+          if (limit != null && String(limit).trim()) params.set("limit", String(limit));
+          return getJson(`/api/public/search?${params}`);
+        },
       },
       {
         name: "read_xinchuan_page",

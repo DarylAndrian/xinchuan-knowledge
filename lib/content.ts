@@ -224,11 +224,23 @@ export function sanitizeWikiHtml(html: string): string {
   });
 }
 
-/** Convert saved rich text into normalized plain text for search and read-only APIs. */
+/**
+ * Convert saved rich text into plain text for search and read-only APIs.
+ * Block boundaries become newlines and table cells are separated by spaces,
+ * so adjacent cells do not glue into one word ("001ECPayXinchuan").
+ */
 export function htmlToText(html: string): string {
-  return decodeHtmlEntities(sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }))
+  const separated = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(td|th)>/gi, " </$1>")
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|pre|ul|ol|table|thead|tbody|section|article)>/gi, "\n");
+  const stripped = decodeHtmlEntities(sanitizeHtml(separated, { allowedTags: [], allowedAttributes: {} }));
+  return stripped
     .replace(/\u00a0/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

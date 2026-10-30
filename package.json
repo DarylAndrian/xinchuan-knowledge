@@ -1,11 +1,12 @@
 {
   "name": "xinchuan-knowledge",
-  "version": "1.7.10",
+  "version": "1.7.11",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/next-build.js",
     "start": "next start",
+    "test": "node --import ./tests/register.mjs --test tests/*.test.mts",
     "changelog:add": "node scripts/changelog.js add",
     "changelog:release": "node scripts/changelog.js bump"
   },

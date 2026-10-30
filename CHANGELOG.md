@@ -14,6 +14,20 @@ npm run changelog:release -- patch
 
 ## [Unreleased]
 
+## [1.7.11] - 2026-10-30
+
+### Added
+
+- Search accepts a collection and a result limit, and each hit includes the section heading, anchor, snippet, and score.
+
+### Changed
+
+- Search matches any keyword, ignores stop words, and ranks the best matching section instead of requiring every word.
+
+### Fixed
+
+- Search text keeps spaces between table cells, rows, paragraphs, lists, and headings so adjacent words stay separate.
+
 ## [1.7.10] - 2026-10-30
 
 ### Added

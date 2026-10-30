@@ -1,4 +1,5 @@
 import { db, CollectionRow, PageRow } from "./db";
+import { clampSearchLimit, contentTerms, ftsMatchQuery, snippetAround, termCoverage } from "./search-index";
 
 export interface PageWithEditor extends PageRow {
   editor_name?: string;
@@ -111,25 +112,137 @@ export function firstPublished(): { collection: CollectionRow; page: PageRow } |
   return null;
 }
 
-export function searchPages(q: string): Array<PageRow & {
+export interface SearchHit {
+  id: number;
+  title: string;
+  section: string;
+  anchor: string;
+  snippet: string;
+  score: number;
+  href: string;
+  updated_at: string;
+  collection_id: number;
   collection_slug: string;
   collection_name: string;
-  search_snippet?: string;
-}> {
-  const terms = q.match(/[\p{L}\p{N}_-]+/gu)?.slice(0, 10) || [];
-  if (terms.length === 0) return [];
-  const match = terms.map((term) => `"${term.replace(/"/g, "")}"*`).join(" AND ");
-  return db
-    .prepare(
-      `SELECT p.*, c.slug AS collection_slug, c.name AS collection_name,
-              snippet(page_search, 2, '', '', ' … ', 28) AS search_snippet
-       FROM page_search
-       JOIN pages p ON p.id = CAST(page_search.page_id AS INTEGER)
-       JOIN collections c ON c.id = p.collection_id
-       WHERE page_search MATCH ? AND p.status = 'published'
-       ORDER BY bm25(page_search, 8.0, 3.0), p.updated_at DESC LIMIT 30`
-    )
-    .all(match) as unknown as Array<PageRow & { collection_slug: string; collection_name: string; search_snippet?: string }>;
+}
+
+export interface SearchOptions {
+  /** Collection name, slug, or numeric id. */
+  collection?: string | number | null;
+  /** Defaults to 5. Values above 20 are capped. */
+  limit?: number | null;
+}
+
+export function toPublicSearchHit(hit: SearchHit) {
+  return {
+    id: hit.id,
+    title: hit.title,
+    section: hit.section,
+    anchor: hit.anchor,
+    collection: hit.collection_name,
+    href: hit.href,
+    snippet: hit.snippet,
+    score: hit.score,
+    updated_at: hit.updated_at,
+  };
+}
+
+function collectionFilter(collection: string | number | null | undefined): { sql: string; params: Array<string | number> } {
+  if (collection == null) return { sql: "", params: [] };
+  const raw = String(collection).trim();
+  if (!raw) return { sql: "", params: [] };
+  const id = /^\d+$/.test(raw) ? Number(raw) : -1;
+  return {
+    sql: "AND (c.id = ? OR c.name = ? COLLATE NOCASE OR c.slug = ? COLLATE NOCASE)",
+    params: [id, raw, raw],
+  };
+}
+
+interface SearchRow {
+  id: number;
+  title: string;
+  updated_at: string;
+  collection_id: number;
+  collection_slug: string;
+  collection_name: string;
+  section_heading: string;
+  section_anchor: string;
+  section_text: string;
+  raw_rank: number;
+}
+
+/**
+ * Published pages only. A query matches when any keyword hits, stop words are
+ * ignored, and each hit is the best section on that page (at most two per page).
+ */
+export function searchPages(q: string, options: SearchOptions = {}): SearchHit[] {
+  const terms = contentTerms(q);
+  const match = ftsMatchQuery(q);
+  if (!match) return [];
+  const limit = clampSearchLimit(options.limit);
+  const collection = collectionFilter(options.collection);
+  let rows: SearchRow[];
+  try {
+    rows = db
+      .prepare(
+        `SELECT p.id, p.title, p.updated_at, p.collection_id,
+                c.slug AS collection_slug, c.name AS collection_name,
+                page_search.heading AS section_heading,
+                page_search.anchor AS section_anchor,
+                page_search.body AS section_text,
+                bm25(page_search) AS raw_rank
+         FROM page_search
+         JOIN pages p ON p.id = CAST(page_search.page_id AS INTEGER)
+         JOIN collections c ON c.id = p.collection_id
+         WHERE page_search MATCH ?
+           AND p.status = 'published'
+           ${collection.sql}
+         ORDER BY raw_rank ASC, p.updated_at DESC
+         LIMIT 200`
+      )
+      .all(match, ...collection.params) as unknown as SearchRow[];
+  } catch {
+    return [];
+  }
+
+  const pagesByCollection = new Map<number, PageRow[]>();
+  const ranked = rows.map((row) => {
+    const coverage = termCoverage(`${row.title}\n${row.section_heading}\n${row.section_text}`, terms);
+    const magnitude = Number.isFinite(row.raw_rank) ? Math.abs(row.raw_rank) : 0;
+    const score = Math.round((coverage * 100 + magnitude) * 1000) / 1000;
+    return { row, score };
+  });
+  ranked.sort((a, b) => b.score - a.score || b.row.updated_at.localeCompare(a.row.updated_at));
+
+  const hits: SearchHit[] = [];
+  const perPage = new Map<number, number>();
+  for (const { row, score } of ranked) {
+    const seen = perPage.get(row.id) ?? 0;
+    if (seen >= 2) continue;
+    perPage.set(row.id, seen + 1);
+    let pages = pagesByCollection.get(row.collection_id);
+    if (!pages) {
+      pages = getCollectionPages(row.collection_id);
+      pagesByCollection.set(row.collection_id, pages);
+    }
+    const anchor = row.section_anchor || "intro";
+    const href = `${hrefForPage(row.collection_slug, pages, row.id)}#${anchor}`;
+    hits.push({
+      id: row.id,
+      title: row.title,
+      section: row.section_heading || "",
+      anchor,
+      snippet: snippetAround(row.section_text, q),
+      score,
+      href,
+      updated_at: row.updated_at,
+      collection_id: row.collection_id,
+      collection_slug: row.collection_slug,
+      collection_name: row.collection_name,
+    });
+    if (hits.length >= limit) break;
+  }
+  return hits;
 }
 
 /** Strip tags for search snippets. */
